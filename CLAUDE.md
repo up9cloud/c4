@@ -301,9 +301,10 @@ CI (`.github/workflows/main.yml`): fmt + clippy (`--all-targets
 stable/beta(/nightly experimental), the feature matrix, and an examples
 job that diffs each example's stdout against its committed
 `output.log`. `RUSTFLAGS=-D warnings` globally — keep the tree
-warning-free. Publishing: pushing a `v*` tag runs `cargo publish` with
-`secrets.CRATES_IO_TOKEN` (after the first release this can move to
-crates.io Trusted Publishing); `secrets.TELEGRAM_BOT_TOKEN` /
+warning-free. Publishing: pushing a `v*` tag runs `cargo publish` via crates.io
+Trusted Publishing (`rust-lang/crates-io-auth-action` + job-level
+`id-token: write`; configured on crates.io for this repo + main.yml —
+no long-lived token secret). `secrets.TELEGRAM_BOT_TOKEN` /
 `TELEGRAM_CHAT_ID` feed the notify job.
 When touching feature-gated behavior, run the matrix: default,
 `--all-features`, `--features cli`, each single format via
