@@ -1,0 +1,18 @@
+{
+  "num": {
+    "$id": "Leaf",
+    "value": 1,
+    "source": "tests/fixtures/jsonc/config/app.json",
+    "format": "i64"
+  },
+  "list": {
+    "$id": "Leaf",
+    "value": [
+      1,
+      2,
+      3
+    ],
+    "source": "tests/fixtures/jsonc/config/app.json",
+    "format": "arr:i64"
+  }
+}

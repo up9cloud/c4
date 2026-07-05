@@ -1,0 +1,8 @@
+{
+  "top": {
+    "$id": "Leaf",
+    "value": 1,
+    "source": "tests/fixtures/recursive_off/config/top.yml",
+    "format": "i64"
+  }
+}

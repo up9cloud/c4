@@ -1,0 +1,10 @@
+{
+  "keep": {
+    "k": {
+      "$id": "Leaf",
+      "value": true,
+      "source": "tests/fixtures/tree_unknown/config/keep.json",
+      "format": "bool"
+    }
+  }
+}

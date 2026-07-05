@@ -1,0 +1,22 @@
+{
+  "name": {
+    "$id": "Leaf",
+    "value": "c4",
+    "source": "tests/fixtures/custom_md/config/notes.md",
+    "format": "str"
+  },
+  "port": {
+    "$id": "Leaf",
+    "value": 8080,
+    "source": "tests/fixtures/custom_md/config/notes.md",
+    "format": "u64"
+  },
+  "db": {
+    "host": {
+      "$id": "Leaf",
+      "value": "localhost",
+      "source": "tests/fixtures/custom_md/config/notes.md",
+      "format": "str"
+    }
+  }
+}

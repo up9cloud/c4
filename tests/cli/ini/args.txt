@@ -1,0 +1,1 @@
+-f ini tests/fixtures/simple/config

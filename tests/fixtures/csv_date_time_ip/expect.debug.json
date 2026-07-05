@@ -1,0 +1,32 @@
+{
+  "d": {
+    "$id": "Leaf",
+    "value": "2024-01-02",
+    "source": "tests/fixtures/csv_date_time_ip/config/data.csv",
+    "format": "date"
+  },
+  "t": {
+    "$id": "Leaf",
+    "value": "03:04:05",
+    "source": "tests/fixtures/csv_date_time_ip/config/data.csv",
+    "format": "time"
+  },
+  "frac": {
+    "$id": "Leaf",
+    "value": "03:04:05.5",
+    "source": "tests/fixtures/csv_date_time_ip/config/data.csv",
+    "format": "time"
+  },
+  "ip4": {
+    "$id": "Leaf",
+    "value": "10.0.0.1",
+    "source": "tests/fixtures/csv_date_time_ip/config/data.csv",
+    "format": "ipv4"
+  },
+  "ip6": {
+    "$id": "Leaf",
+    "value": "::1",
+    "source": "tests/fixtures/csv_date_time_ip/config/data.csv",
+    "format": "ipv6"
+  }
+}

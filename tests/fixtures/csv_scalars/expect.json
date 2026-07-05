@@ -1,0 +1,13 @@
+{
+  "a": 123,
+  "pi": 3.5,
+  "debug": true,
+  "name": "hello",
+  "big": 9999999999,
+  "count": 42,
+  "ratio": 0.5,
+  "label": "hi",
+  "flag": false,
+  "guess": 99,
+  "plain": 7
+}

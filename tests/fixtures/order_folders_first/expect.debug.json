@@ -1,0 +1,8 @@
+{
+  "who": {
+    "$id": "Leaf",
+    "value": "file",
+    "source": "tests/fixtures/order_folders_first/config/a.yml",
+    "format": "str"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "db": {
+    "host": {
+      "$id": "Leaf",
+      "value": "localhost",
+      "source": "tests/fixtures/csv_dot_key/config/data.csv",
+      "format": "str"
+    },
+    "port": {
+      "$id": "Leaf",
+      "value": 5432,
+      "source": "tests/fixtures/csv_dot_key/config/data.csv",
+      "format": "u64"
+    }
+  }
+}

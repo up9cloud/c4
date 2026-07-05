@@ -1,0 +1,20 @@
+{
+  "born": {
+    "$id": "Leaf",
+    "value": "2024-01-02T03:04:05Z",
+    "source": "tests/fixtures/csv_datetime/config/data.csv",
+    "format": "dt"
+  },
+  "day": {
+    "$id": "Leaf",
+    "value": "2024-01-02",
+    "source": "tests/fixtures/csv_datetime/config/data.csv",
+    "format": "dt"
+  },
+  "precise": {
+    "$id": "Leaf",
+    "value": "2024-01-02 03:04:05.123+08:00",
+    "source": "tests/fixtures/csv_datetime/config/data.csv",
+    "format": "dt"
+  }
+}

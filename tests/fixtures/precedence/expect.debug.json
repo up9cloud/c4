@@ -1,0 +1,20 @@
+{
+  "a": {
+    "$id": "Leaf",
+    "value": 2,
+    "source": "tests/fixtures/precedence/config/app.yml",
+    "format": "i64"
+  },
+  "only_json": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/precedence/config/app.json",
+    "format": "bool"
+  },
+  "only_yaml": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/precedence/config/app.yml",
+    "format": "bool"
+  }
+}

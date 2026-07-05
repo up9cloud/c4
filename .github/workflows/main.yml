@@ -1,0 +1,134 @@
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+
+# keep the tree warning-free: CI treats every warning as an error
+env:
+  RUSTFLAGS: -D warnings
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  check:
+    name: Check all
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-features
+
+  test:
+    needs: [check]
+    name: Test (${{ matrix.rust }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, beta]
+        include:
+          - rust: nightly
+            experimental: true
+    continue-on-error: ${{ matrix.experimental || false }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-features
+
+  test-features:
+    needs: [check]
+    name: Features (${{ matrix.flags == '' && 'default' || matrix.flags }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flags:
+          - ""
+          - "--features cli"
+          - "--features csv,inet"
+          - "--no-default-features --features jsonc"
+          - "--no-default-features --features yaml"
+          - "--no-default-features --features json"
+          - "--no-default-features --features toml,datetime"
+          - "--no-default-features --features ini"
+          - "--no-default-features --features env,tree,inet"
+          - "--no-default-features --features csv,datetime,macaddr,uuid"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.flags }}
+      - run: cargo test ${{ matrix.flags }}
+
+  examples:
+    needs: [check]
+    name: Examples match their output.log
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          for ex in readme-simple readme-advanced watch; do
+            echo "== $ex"
+            (cd "examples/$ex" && cargo run --quiet > /tmp/out.log && diff /tmp/out.log output.log)
+          done
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [msrv, test, test-features, examples]
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      # the first release needs an API token (secrets.CRATES_IO_TOKEN);
+      # after that, consider switching to crates.io Trusted Publishing
+      # (rust-lang/crates-io-auth-action + `permissions: id-token: write`)
+      # and dropping the long-lived secret
+      - run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+
+  notify:
+    if: ${{ !cancelled() }}
+    needs: [check, msrv, test, test-features, examples, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - id: set_status
+        run: |
+          if [ "${{ needs.check.result }}" = "success" ] &&
+            [ "${{ needs.msrv.result }}" = "success" ] &&
+            [ "${{ needs.test.result }}" = "success" ] &&
+            [ "${{ needs.test-features.result }}" = "success" ] &&
+            [ "${{ needs.examples.result }}" = "success" ] &&
+            { [ "${{ needs.publish.result }}" = "success" ] || [ "${{ needs.publish.result }}" = "skipped" ]; }; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            exit 2
+          fi
+      - uses: up9cloud/action-notify@master
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_JOB_STATUS: ${{ steps.set_status.outputs.status }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

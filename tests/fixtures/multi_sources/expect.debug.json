@@ -1,0 +1,26 @@
+{
+  "shared": {
+    "$id": "Leaf",
+    "value": "local",
+    "source": "tests/fixtures/multi_sources/local.json",
+    "format": "str"
+  },
+  "base_only": {
+    "$id": "Leaf",
+    "value": 1,
+    "source": "tests/fixtures/multi_sources/base/a.yml",
+    "format": "i64"
+  },
+  "override_only": {
+    "$id": "Leaf",
+    "value": 2,
+    "source": "tests/fixtures/multi_sources/override/a.yml",
+    "format": "i64"
+  },
+  "local_only": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/multi_sources/local.json",
+    "format": "bool"
+  }
+}

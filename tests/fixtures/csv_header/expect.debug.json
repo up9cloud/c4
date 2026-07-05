@@ -1,0 +1,14 @@
+{
+  "a": {
+    "$id": "Leaf",
+    "value": 123,
+    "source": "tests/fixtures/csv_header/config/data.csv",
+    "format": "i64"
+  },
+  "name": {
+    "$id": "Leaf",
+    "value": "hello",
+    "source": "tests/fixtures/csv_header/config/data.csv",
+    "format": "str"
+  }
+}

@@ -1,0 +1,35 @@
+value = Object(
+    {
+        "db": Object(
+            {
+                "host": String(
+                    "localhost",
+                ),
+                "port": Int(
+                    5432,
+                ),
+            },
+        ),
+        "name": String(
+            "c4",
+        ),
+        "port": Int(
+            8080,
+        ),
+    },
+)
+db.host = Some("localhost")
+app.json only = Object(
+    {
+        "name": String(
+            "c4",
+        ),
+        "port": Int(
+            8080,
+        ),
+    },
+)
+cfg = MyConfig {
+    name: "c4",
+    port: 8080,
+}

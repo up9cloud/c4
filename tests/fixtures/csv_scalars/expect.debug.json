@@ -1,0 +1,68 @@
+{
+  "a": {
+    "$id": "Leaf",
+    "value": 123,
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "i64"
+  },
+  "pi": {
+    "$id": "Leaf",
+    "value": 3.5,
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "f64"
+  },
+  "debug": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "bool"
+  },
+  "name": {
+    "$id": "Leaf",
+    "value": "hello",
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "str"
+  },
+  "big": {
+    "$id": "Leaf",
+    "value": 9999999999,
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "i64"
+  },
+  "count": {
+    "$id": "Leaf",
+    "value": 42,
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "i64"
+  },
+  "ratio": {
+    "$id": "Leaf",
+    "value": 0.5,
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "f64"
+  },
+  "label": {
+    "$id": "Leaf",
+    "value": "hi",
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "str"
+  },
+  "flag": {
+    "$id": "Leaf",
+    "value": false,
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "bool"
+  },
+  "guess": {
+    "$id": "Leaf",
+    "value": 99,
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "i64"
+  },
+  "plain": {
+    "$id": "Leaf",
+    "value": 7,
+    "source": "tests/fixtures/csv_scalars/config/data.csv",
+    "format": "i64"
+  }
+}

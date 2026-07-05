@@ -1,0 +1,25 @@
+{
+  "nothing": {
+    "$id": "Leaf",
+    "value": null,
+    "source": "tests/fixtures/csv_extended/config/data.csv",
+    "format": "null"
+  },
+  "ports": {
+    "$id": "Leaf",
+    "value": [
+      80,
+      443
+    ],
+    "source": "tests/fixtures/csv_extended/config/data.csv",
+    "format": "arr:u64"
+  },
+  "meta": {
+    "x": {
+      "$id": "Leaf",
+      "value": 1,
+      "source": "tests/fixtures/csv_extended/config/data.csv",
+      "format": "i64"
+    }
+  }
+}

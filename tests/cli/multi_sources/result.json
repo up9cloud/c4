@@ -1,0 +1,6 @@
+{
+  "base_only": 1,
+  "local_only": true,
+  "override_only": 2,
+  "shared": "local"
+}

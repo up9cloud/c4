@@ -1,0 +1,5 @@
+{
+  // this .yml file is claimed by the jsonc parser
+  "who": "jsonc",
+  "nums": [1, 2,],
+}

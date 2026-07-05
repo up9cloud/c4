@@ -1,0 +1,36 @@
+{
+  "s": {
+    "$id": "Leaf",
+    "value": "b",
+    "source": "tests/fixtures/merge_order/config/b.json",
+    "format": "str"
+  },
+  "x": {
+    "m": {
+      "$id": "Leaf",
+      "value": 2,
+      "source": "tests/fixtures/merge_order/config/b.json",
+      "format": "i64"
+    },
+    "keep_a": {
+      "$id": "Leaf",
+      "value": true,
+      "source": "tests/fixtures/merge_order/config/a.json",
+      "format": "bool"
+    },
+    "keep_b": {
+      "$id": "Leaf",
+      "value": true,
+      "source": "tests/fixtures/merge_order/config/b.json",
+      "format": "bool"
+    }
+  },
+  "arr": {
+    "$id": "Leaf",
+    "value": [
+      9
+    ],
+    "source": "tests/fixtures/merge_order/config/b.json",
+    "format": "arr:i64"
+  }
+}

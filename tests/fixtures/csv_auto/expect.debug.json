@@ -1,0 +1,32 @@
+{
+  "a": {
+    "$id": "Leaf",
+    "value": 123,
+    "source": "tests/fixtures/csv_auto/config/data.csv",
+    "format": "i64"
+  },
+  "pi": {
+    "$id": "Leaf",
+    "value": 3.5,
+    "source": "tests/fixtures/csv_auto/config/data.csv",
+    "format": "f64"
+  },
+  "debug": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/csv_auto/config/data.csv",
+    "format": "bool"
+  },
+  "name": {
+    "$id": "Leaf",
+    "value": "hello",
+    "source": "tests/fixtures/csv_auto/config/data.csv",
+    "format": "str"
+  },
+  "zip": {
+    "$id": "Leaf",
+    "value": "00123",
+    "source": "tests/fixtures/csv_auto/config/data.csv",
+    "format": "str"
+  }
+}

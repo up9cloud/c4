@@ -1,0 +1,37 @@
+{
+  "s": {
+    "$id": "Leaf",
+    "value": "a",
+    "source": "tests/fixtures/merge_order_reverse/config/a.json",
+    "format": "str"
+  },
+  "x": {
+    "m": {
+      "$id": "Leaf",
+      "value": 1,
+      "source": "tests/fixtures/merge_order_reverse/config/a.json",
+      "format": "i64"
+    },
+    "keep_a": {
+      "$id": "Leaf",
+      "value": true,
+      "source": "tests/fixtures/merge_order_reverse/config/a.json",
+      "format": "bool"
+    },
+    "keep_b": {
+      "$id": "Leaf",
+      "value": true,
+      "source": "tests/fixtures/merge_order_reverse/config/b.json",
+      "format": "bool"
+    }
+  },
+  "arr": {
+    "$id": "Leaf",
+    "value": [
+      1,
+      2
+    ],
+    "source": "tests/fixtures/merge_order_reverse/config/a.json",
+    "format": "arr:i64"
+  }
+}

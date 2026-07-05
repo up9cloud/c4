@@ -1,0 +1,50 @@
+{
+  "host": {
+    "$id": "Leaf",
+    "value": "10.0.0.1",
+    "source": "tests/fixtures/csv_net/config/data.csv",
+    "format": "ipv4"
+  },
+  "host6": {
+    "$id": "Leaf",
+    "value": "::1",
+    "source": "tests/fixtures/csv_net/config/data.csv",
+    "format": "ipv6"
+  },
+  "masked": {
+    "$id": "Leaf",
+    "value": "10.0.0.1/24",
+    "source": "tests/fixtures/csv_net/config/data.csv",
+    "format": "inet"
+  },
+  "net": {
+    "$id": "Leaf",
+    "value": "10.0.0.0/8",
+    "source": "tests/fixtures/csv_net/config/data.csv",
+    "format": "cidr"
+  },
+  "net6": {
+    "$id": "Leaf",
+    "value": "2001:db8::/32",
+    "source": "tests/fixtures/csv_net/config/data.csv",
+    "format": "cidr"
+  },
+  "mac": {
+    "$id": "Leaf",
+    "value": "aa:bb:cc:dd:ee:ff",
+    "source": "tests/fixtures/csv_net/config/data.csv",
+    "format": "macaddr"
+  },
+  "mac8": {
+    "$id": "Leaf",
+    "value": "aa:bb:cc:dd:ee:ff:00:11",
+    "source": "tests/fixtures/csv_net/config/data.csv",
+    "format": "macaddr8"
+  },
+  "id": {
+    "$id": "Leaf",
+    "value": "550e8400-e29b-41d4-a716-446655440000",
+    "source": "tests/fixtures/csv_net/config/data.csv",
+    "format": "uuid"
+  }
+}

@@ -1,0 +1,1 @@
+--tree -f json tests/fixtures/tree_basic/config

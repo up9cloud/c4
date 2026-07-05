@@ -1,0 +1,5 @@
+{
+  // jsonc: comments and trailing commas are fine
+  "num": 1, // eol comment
+  "list": [1, 2, 3,],
+}

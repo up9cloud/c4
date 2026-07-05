@@ -1,0 +1,1 @@
+--trace -f json tests/fixtures/simple/config

@@ -1,0 +1,18 @@
+{
+  "a": {
+    "b": {
+      "$id": "Leaf",
+      "value": 123,
+      "source": "tests/fixtures/tree_order_reverse/config/a.yml",
+      "format": "i64"
+    },
+    "c": {
+      "d": {
+        "$id": "Leaf",
+        "value": 345,
+        "source": "tests/fixtures/tree_order_reverse/config/a/c.yml",
+        "format": "i64"
+      }
+    }
+  }
+}

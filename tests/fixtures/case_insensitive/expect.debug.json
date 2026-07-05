@@ -1,0 +1,14 @@
+{
+  "key": {
+    "$id": "Leaf",
+    "value": 2,
+    "source": "tests/fixtures/case_insensitive/config/b.yml",
+    "format": "i64"
+  },
+  "onlyupper": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/case_insensitive/config/a.json",
+    "format": "bool"
+  }
+}

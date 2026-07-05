@@ -1,0 +1,22 @@
+{
+  "title": {
+    "$id": "Leaf",
+    "value": "demo",
+    "source": "tests/fixtures/toml_basic/config/app.toml",
+    "format": "str"
+  },
+  "count": {
+    "$id": "Leaf",
+    "value": 3,
+    "source": "tests/fixtures/toml_basic/config/app.toml",
+    "format": "i64"
+  },
+  "owner": {
+    "name": {
+      "$id": "Leaf",
+      "value": "up9",
+      "source": "tests/fixtures/toml_basic/config/app.toml",
+      "format": "str"
+    }
+  }
+}

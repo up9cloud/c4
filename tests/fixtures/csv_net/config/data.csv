@@ -1,0 +1,8 @@
+host,10.0.0.1,inet
+host6,::1,inet
+masked,10.0.0.1/24,inet
+net,10.0.0.0/8,cidr
+net6,2001:db8::/32,cidr
+mac,aa:bb:cc:dd:ee:ff,macaddr
+mac8,aa:bb:cc:dd:ee:ff:00:11,macaddr8
+id,550e8400-e29b-41d4-a716-446655440000,uuid

@@ -1,0 +1,1 @@
+-f json tests/fixtures/multi_sources/base tests/fixtures/multi_sources/override tests/fixtures/multi_sources/local.json

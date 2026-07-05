@@ -1,0 +1,11 @@
+a,123,i8
+pi,3.5,f32
+debug,true,bool
+name,hello,str
+big,9999999999,i64
+count,42,int
+ratio,0.5,number
+label,hi,string
+flag,false,boolean
+guess,99,auto
+plain,7,

@@ -1,0 +1,4 @@
+/target
+/.claude/
+/examples/*/target/
+/examples/*/Cargo.lock

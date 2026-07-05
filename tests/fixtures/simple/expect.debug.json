@@ -1,0 +1,28 @@
+{
+  "name": {
+    "$id": "Leaf",
+    "value": "c4",
+    "source": "tests/fixtures/simple/config/app.json",
+    "format": "str"
+  },
+  "port": {
+    "$id": "Leaf",
+    "value": 8080,
+    "source": "tests/fixtures/simple/config/app.json",
+    "format": "i64"
+  },
+  "db": {
+    "host": {
+      "$id": "Leaf",
+      "value": "localhost",
+      "source": "tests/fixtures/simple/config/db.yml",
+      "format": "str"
+    },
+    "port": {
+      "$id": "Leaf",
+      "value": 5432,
+      "source": "tests/fixtures/simple/config/db.yml",
+      "format": "i64"
+    }
+  }
+}

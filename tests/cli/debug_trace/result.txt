@@ -1,0 +1,40 @@
+Object(
+    {
+        "db": Object(
+            {
+                "host": Leaf {
+                    value: String(
+                        "localhost",
+                    ),
+                    source: File(
+                        "tests/fixtures/simple/config/db.yml",
+                    ),
+                },
+                "port": Leaf {
+                    value: Int(
+                        5432,
+                    ),
+                    source: File(
+                        "tests/fixtures/simple/config/db.yml",
+                    ),
+                },
+            },
+        ),
+        "name": Leaf {
+            value: String(
+                "c4",
+            ),
+            source: File(
+                "tests/fixtures/simple/config/app.json",
+            ),
+        },
+        "port": Leaf {
+            value: Int(
+                8080,
+            ),
+            source: File(
+                "tests/fixtures/simple/config/app.json",
+            ),
+        },
+    },
+)

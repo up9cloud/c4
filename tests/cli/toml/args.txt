@@ -1,0 +1,1 @@
+-f toml tests/fixtures/simple/config

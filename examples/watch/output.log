@@ -1,0 +1,4 @@
+loaded: port = Some(8080), greeting = Some("hello")
+reloaded: port = Some(9090), greeting = Some("hello")
+reloaded: port = Some(9090), greeting = Some("hi there")
+done after 2 changes

@@ -1,0 +1,20 @@
+{
+  "BASE": {
+    "$id": "Leaf",
+    "value": "from_dotenv",
+    "source": "tests/fixtures/env_variants/config/.env",
+    "format": "str"
+  },
+  "LOCAL": {
+    "$id": "Leaf",
+    "value": "yes",
+    "source": "tests/fixtures/env_variants/config/local.env",
+    "format": "str"
+  },
+  "PORT": {
+    "$id": "Leaf",
+    "value": "2",
+    "source": "tests/fixtures/env_variants/config/local.env",
+    "format": "str"
+  }
+}

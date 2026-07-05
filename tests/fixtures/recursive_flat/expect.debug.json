@@ -1,0 +1,14 @@
+{
+  "top": {
+    "$id": "Leaf",
+    "value": 1,
+    "source": "tests/fixtures/recursive_flat/config/top.yml",
+    "format": "i64"
+  },
+  "host": {
+    "$id": "Leaf",
+    "value": "localhost",
+    "source": "tests/fixtures/recursive_flat/config/sub/db.yml",
+    "format": "str"
+  }
+}

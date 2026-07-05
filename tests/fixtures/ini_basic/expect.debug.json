@@ -1,0 +1,22 @@
+{
+  "top": {
+    "$id": "Leaf",
+    "value": "level",
+    "source": "tests/fixtures/ini_basic/config/app.ini",
+    "format": "str"
+  },
+  "server": {
+    "host": {
+      "$id": "Leaf",
+      "value": "localhost",
+      "source": "tests/fixtures/ini_basic/config/app.ini",
+      "format": "str"
+    },
+    "port": {
+      "$id": "Leaf",
+      "value": "8080",
+      "source": "tests/fixtures/ini_basic/config/app.ini",
+      "format": "str"
+    }
+  }
+}

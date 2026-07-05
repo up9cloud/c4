@@ -1,0 +1,10 @@
+{
+  "a": {
+    "blabla": {
+      "$id": "Leaf",
+      "value": "1.1.1.1",
+      "source": "tests/fixtures/tree_auto/config/a/blabla",
+      "format": "ipv4"
+    }
+  }
+}

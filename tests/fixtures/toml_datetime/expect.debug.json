@@ -1,0 +1,14 @@
+{
+  "title": {
+    "$id": "Leaf",
+    "value": "clock",
+    "source": "tests/fixtures/toml_datetime/config/app.toml",
+    "format": "str"
+  },
+  "when": {
+    "$id": "Leaf",
+    "value": "2024-01-02T03:04:05Z",
+    "source": "tests/fixtures/toml_datetime/config/app.toml",
+    "format": "dt"
+  }
+}

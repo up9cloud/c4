@@ -1,0 +1,55 @@
+[package]
+name = "c4-config"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Load a folder of config files (jsonc/yaml/json/toml/ini/env/csv) into one deep-merged value"
+license = "MIT"
+autoexamples = false
+
+[dependencies]
+serde = "1"
+serde_json = { version = "1", optional = true }
+jsonc-parser = { version = "0.26", optional = true }
+serde_yaml = { version = "0.9", optional = true }
+toml = { version = "0.8", optional = true }
+csv = { version = "1", optional = true }
+
+[lib]
+name = "c4"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = ["jsonc", "yaml", "numeric"]
+json = ["dep:serde_json"]
+jsonc = ["dep:jsonc-parser"]
+yaml = ["dep:serde_yaml"]
+toml = ["dep:toml"]
+ini = []
+env = []
+csv = ["dep:csv"]
+date = []
+time = []
+ipv4 = []
+ipv6 = []
+cidr = []
+macaddr8 = []
+uuid = []
+datetime = ["date", "time"]
+inet = ["ipv4", "ipv6", "cidr"]
+macaddr = ["macaddr8"]
+numeric = []
+tree = []
+cli = [
+    "json", "jsonc", "yaml", "toml", "ini", "env", "csv",
+    "datetime", "inet", "macaddr", "uuid", "numeric", "tree",
+    "dep:serde_json",
+]
+
+[[bin]]
+name = "c4"
+path = "src/main.rs"
+required-features = ["cli"]

@@ -1,0 +1,20 @@
+{
+  "a": {
+    "b": {
+      "c": {
+        "$id": "Leaf",
+        "value": 1,
+        "source": "tests/fixtures/tree_basic/config/a/b.json",
+        "format": "i64"
+      }
+    }
+  },
+  "d": {
+    "a": {
+      "$id": "Leaf",
+      "value": 123,
+      "source": "tests/fixtures/tree_basic/config/d.json",
+      "format": "i64"
+    }
+  }
+}

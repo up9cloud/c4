@@ -1,0 +1,5 @@
+{
+  "BASE": "from_dotenv",
+  "LOCAL": "yes",
+  "PORT": "2"
+}

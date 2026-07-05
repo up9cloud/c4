@@ -1,0 +1,52 @@
+value = Object(
+    {
+        "debug": Bool(
+            true,
+        ),
+        "name": String(
+            "advanced",
+        ),
+        "note": String(
+            "from code",
+        ),
+        "port": Int(
+            9090,
+        ),
+    },
+)
+trace = Object(
+    {
+        "debug": Leaf {
+            value: Bool(
+                true,
+            ),
+            source: Value(
+                2,
+            ),
+        },
+        "name": Leaf {
+            value: String(
+                "advanced",
+            ),
+            source: File(
+                "config/defaults/base.yml",
+            ),
+        },
+        "note": Leaf {
+            value: String(
+                "from code",
+            ),
+            source: String(
+                1,
+            ),
+        },
+        "port": Leaf {
+            value: Int(
+                9090,
+            ),
+            source: File(
+                "config/local.json",
+            ),
+        },
+    },
+)

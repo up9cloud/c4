@@ -1,0 +1,9 @@
+[package]
+name = "readme-simple"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+c4-config = { path = "../.." }
+serde = { version = "1", features = ["derive"] }

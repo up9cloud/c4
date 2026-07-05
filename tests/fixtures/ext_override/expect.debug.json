@@ -1,0 +1,17 @@
+{
+  "who": {
+    "$id": "Leaf",
+    "value": "jsonc",
+    "source": "tests/fixtures/ext_override/config/app.yml",
+    "format": "str"
+  },
+  "nums": {
+    "$id": "Leaf",
+    "value": [
+      1,
+      2
+    ],
+    "source": "tests/fixtures/ext_override/config/app.yml",
+    "format": "arr:i64"
+  }
+}
