@@ -1,10 +1,11 @@
 [package]
 name = "c4-config"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Load a folder of config files (jsonc/yaml/json/toml/ini/env/csv) into one deep-merged value"
 license = "MIT"
+repository = "https://github.com/up9cloud/c4"
 autoexamples = false
 
 [dependencies]
