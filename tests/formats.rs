@@ -28,58 +28,179 @@ mod csv {
         check("csv_auto", c4::Options::default());
     }
 
+    // a `json` cell holds a whole JSON document (array, object, null, …);
+    // the id exists whenever json or jsonc is compiled in — no opt-in
+    #[cfg(any(feature = "json", feature = "jsonc"))]
     #[test]
-    fn extended_types_rejected_by_default() {
-        // default TableTypes::scalars(): null / arr:<t> / json rows error out
-        let res = loader(vec![c4::Source::folder(fx("csv_extended/config"))]).load::<c4::Value>();
-        assert!(res.is_err());
+    fn json_cell_holds_a_document() {
+        check("csv_extended", c4::Options::default());
     }
 
-    // the `json` cell type parses only when the json format feature is
-    // compiled in; the fixture expects the parsed object
-    #[cfg(feature = "json")]
+    // without json AND jsonc the `json` id does not exist — the row errors
+    #[cfg(not(any(feature = "json", feature = "jsonc")))]
     #[test]
-    fn extended_types_opt_in() {
-        let mut options = c4::Options::default();
-        options.table.types = c4::TableTypes::all();
-        check("csv_extended", options);
-    }
-
-    #[cfg(not(feature = "json"))]
-    #[test]
-    fn json_cell_without_json_feature_is_unknown_type() {
-        // even with the json table type opted in, the id only exists when
-        // the json format feature is compiled in
-        let mut options = c4::Options::default();
-        options.table.types = c4::TableTypes::all();
-        let mut options = options;
-        options.sources = vec![c4::Source::string(
-            c4::Format::Csv,
-            r#"meta,"{""x"":1}",json"#,
-        )];
-        let err = c4::Loader::new(options).load::<c4::Value>().unwrap_err();
+    fn json_cell_without_json_or_jsonc_is_unknown_type() {
+        let err = loader(vec![(c4::Format::Csv, r#"meta,"{""x"":1}",json"#).into()])
+            .load::<c4::Value>()
+            .unwrap_err();
         assert!(matches!(err, c4::Error::Table { row: 1, .. }));
     }
 
     #[test]
-    fn header_row_opt_in() {
-        // header: true expects a key,value,format header row
-        let mut options = c4::Options::default();
-        options.table.header = true;
-        check("csv_header", options);
+    fn i128_and_u128_typed_cells() {
+        // 128-bit is explicit-only; full-width values round-trip
+        assert_eq!(
+            csv_leaf("a,170141183460469231731687303715884105727,i128", "a"),
+            c4::Value::Int128(i128::MAX)
+        );
+        assert_eq!(
+            csv_leaf("a,340282366920938463463374607431768211455,u128", "a"),
+            c4::Value::Uint128(u128::MAX)
+        );
+        assert_eq!(csv_leaf("a,-5,i128", "a"), c4::Value::Int128(-5));
+        // a value past the declared type's range is an error
+        let err = loader(vec![
+            (
+                c4::Format::Csv,
+                "a,340282366920938463463374607431768211455,i128",
+            )
+                .into(),
+        ])
+        .load::<c4::Value>()
+        .unwrap_err();
+        assert!(matches!(err, c4::Error::Table { row: 1, .. }));
     }
 
     #[test]
-    fn custom_column_names_and_order() {
-        // header is t,k,v: columns are located by name, order is free
-        let mut options = c4::Options::default();
-        options.table.header = true;
-        options.table.columns = c4::TableColumns {
-            key: "k".into(),
-            value: "v".into(),
-            format: "t".into(),
-        };
-        check("csv_custom_columns", options);
+    fn auto_never_widens_past_u64() {
+        // an integer beyond u64 stays a float under auto — use an explicit
+        // i128/u128 cell to keep the precision
+        assert!(matches!(
+            csv_leaf("a,340282366920938463463374607431768211455", "a"),
+            c4::Value::Float(_)
+        ));
+    }
+
+    #[test]
+    fn explicit_bool_accepts_loose_tokens() {
+        for t in ["true", "TRUE", "t", "yes", "Y", "on", "1"] {
+            assert_eq!(
+                csv_leaf(&format!("a,{t},bool"), "a"),
+                c4::Value::Bool(true),
+                "true token {t}"
+            );
+        }
+        for f in ["false", "False", "f", "no", "N", "off", "0"] {
+            assert_eq!(
+                csv_leaf(&format!("a,{f},bool"), "a"),
+                c4::Value::Bool(false),
+                "false token {f}"
+            );
+        }
+        // an unrecognized token in a bool cell errors
+        let err = loader(vec![(c4::Format::Csv, "a,maybe,bool").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
+        assert!(matches!(err, c4::Error::Table { row: 1, .. }));
+    }
+
+    #[test]
+    fn auto_bool_is_strict_case_insensitive() {
+        // auto accepts only the words true/false (any case) — not yes/on/1
+        assert_eq!(csv_leaf("a,True", "a"), c4::Value::Bool(true));
+        assert_eq!(csv_leaf("a,FALSE", "a"), c4::Value::Bool(false));
+        assert_eq!(csv_leaf("a,yes", "a"), c4::Value::String("yes".into()));
+        assert_eq!(csv_leaf("a,1", "a"), c4::Value::Int(1));
+    }
+
+    // The built-in csv format is headerless positional. A header row and
+    // renamed/reordered columns are handled by a CustomFormat that maps
+    // the header and lowers the file to positional key,value,format rows —
+    // the documented escape hatch (also in the `csv-header` example).
+    #[test]
+    fn header_and_columns_via_custom_format() {
+        let csv_header = c4::CustomFormat::new("csv-header", ["csv"], |text, path, options| {
+            let mut lines = text.lines().filter(|l| !l.trim().is_empty());
+            let header: Vec<String> = lines
+                .next()
+                .unwrap_or_default()
+                .split(',')
+                .map(|c| c.trim().to_owned())
+                .collect();
+            let col = |name: &str| header.iter().position(|h| h == name);
+            let (k, v, f) = (col("key"), col("value"), col("format"));
+            let (Some(k), Some(v)) = (k, v) else {
+                return Err(c4::Error::Parse {
+                    path: path.to_path_buf(),
+                    message: "csv-header needs key and value columns".into(),
+                });
+            };
+            let rows = lines
+                .map(|line| {
+                    let cells: Vec<&str> = line.split(',').map(str::trim).collect();
+                    let mut row = vec![cells[k].to_owned(), cells[v].to_owned()];
+                    if let Some(fc) = f.and_then(|f| cells.get(f)) {
+                        row.push((*fc).to_owned());
+                    }
+                    row
+                })
+                .collect();
+            c4::parse_table(rows, path, options)
+        });
+
+        // columns in any order (value,key,format), located by their names
+        let value: c4::Value = c4::Loader::new(c4::Options {
+            sources: vec![(csv_header, "value,key,format\nc4,name,str\n8080,port,u16").into()],
+            ..c4::Options::default()
+        })
+        .load()
+        .unwrap();
+        assert_eq!(value["name"].as_str(), Some("c4"));
+        assert_eq!(value["port"].as_u64(), Some(8080));
+    }
+
+    // A column-oriented (transposed) csv is another CustomFormat escape
+    // hatch: rows of keys / values / formats, transposed so each column
+    // becomes a positional [key, value, format] row (the `csv-transpose`
+    // example). ipv4 both validates the cell and gates this test.
+    #[cfg(feature = "ipv4")]
+    #[test]
+    fn transpose_via_custom_format() {
+        let csv_t = c4::CustomFormat::new("csv-t", ["csv"], |text, path, options| {
+            let grid: Vec<Vec<&str>> = text
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| l.split(',').map(str::trim).collect())
+                .collect();
+            let width = grid.iter().map(Vec::len).max().unwrap_or(0);
+            let rows = (0..width)
+                .map(|col| {
+                    grid.iter()
+                        .map(|r| r.get(col).copied().unwrap_or("").to_owned())
+                        .collect()
+                })
+                .collect();
+            c4::parse_table(rows, path, options)
+        });
+
+        // keys / values / formats rows; the last column has no format cell
+        let value: c4::Value = c4::Loader::new(c4::Options {
+            sources: vec![(csv_t.clone(), "a,b,c\n1,1.1.1.1,8080\nint,ipv4").into()],
+            ..c4::Options::default()
+        })
+        .load()
+        .unwrap();
+        assert_eq!(value["a"].as_i64(), Some(1)); // explicit int
+        assert_eq!(value["b"].as_str(), Some("1.1.1.1")); // ipv4-validated, canonical string
+        assert_eq!(value["c"].as_u64(), Some(8080)); // auto (no format cell)
+
+        // the ipv4 format actually validates — a bad address errors
+        let bad = c4::Loader::new(c4::Options {
+            sources: vec![(csv_t, "b\n999.1.1.1\nipv4").into()],
+            ..c4::Options::default()
+        })
+        .load::<c4::Value>();
+        assert!(matches!(bad, Err(c4::Error::Table { row: 1, .. })));
     }
 
     // the type ids only exist with their parser feature, so the fixture
@@ -102,9 +223,7 @@ mod csv {
     /// use string sources so each test only involves its own type id.
     #[allow(dead_code)] // unused when no value-parser feature is on
     fn csv_leaf(row: &str, key: &str) -> c4::Value {
-        let traced = loader(vec![c4::Source::string(c4::Format::Csv, row)])
-            .trace()
-            .unwrap();
+        let traced = loader(vec![(c4::Format::Csv, row).into()]).trace().unwrap();
         let c4::TracedValue::Object(root) = traced else {
             panic!("root must be an object");
         };
@@ -128,7 +247,7 @@ mod csv {
     fn dt_without_feature_is_unknown_type() {
         // the id does not exist without the feature — a row using it is
         // an error, not a silent string
-        let err = loader(vec![c4::Source::folder(fx("csv_datetime/config"))])
+        let err = loader(vec![fx("csv_datetime/config").into()])
             .load::<c4::Value>()
             .unwrap_err();
         assert!(matches!(err, c4::Error::Table { row: 1, .. }));
@@ -173,7 +292,7 @@ mod csv {
     #[cfg(not(feature = "ipv4"))]
     #[test]
     fn ipv4_without_feature_is_unknown_type() {
-        let err = loader(vec![c4::Source::string(c4::Format::Csv, "a,1.1.1.1,ipv4")])
+        let err = loader(vec![(c4::Format::Csv, "a,1.1.1.1,ipv4").into()])
             .load::<c4::Value>()
             .unwrap_err();
         match err {
@@ -219,12 +338,9 @@ mod csv {
             csv_leaf("a,10.0.0.1/24,inet", "a"),
             c4::Value::Inet("10.0.0.1/24".into())
         );
-        let err = loader(vec![c4::Source::string(
-            c4::Format::Csv,
-            "a,10.0.0.1/33,inet",
-        )])
-        .load::<c4::Value>()
-        .unwrap_err();
+        let err = loader(vec![(c4::Format::Csv, "a,10.0.0.1/33,inet").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
         assert!(matches!(err, c4::Error::Table { row: 1, .. }));
     }
 
@@ -247,24 +363,18 @@ mod csv {
     #[test]
     fn cidr_rejects_host_bits_below_the_mask() {
         // valid inet, but not a cidr network
-        let err = loader(vec![c4::Source::string(
-            c4::Format::Csv,
-            "a,10.0.0.1/24,cidr",
-        )])
-        .load::<c4::Value>()
-        .unwrap_err();
+        let err = loader(vec![(c4::Format::Csv, "a,10.0.0.1/24,cidr").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
         assert!(matches!(err, c4::Error::Table { row: 1, .. }));
     }
 
     #[cfg(feature = "cidr")]
     #[test]
     fn bad_cidr_prefix_reports_row() {
-        let err = loader(vec![c4::Source::string(
-            c4::Format::Csv,
-            "a,10.0.0.0/33,cidr",
-        )])
-        .load::<c4::Value>()
-        .unwrap_err();
+        let err = loader(vec![(c4::Format::Csv, "a,10.0.0.0/33,cidr").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
         assert!(matches!(err, c4::Error::Table { row: 1, .. }));
     }
 
@@ -321,12 +431,9 @@ mod csv {
         }
         // wrong digit count, mixed separators, off-list groupings fail
         for bad in ["08002b:0102", "08:00-2b:01:02:03", "0800:2b01:0203"] {
-            let err = loader(vec![c4::Source::string(
-                c4::Format::Csv,
-                format!("a,{bad},macaddr"),
-            )])
-            .load::<c4::Value>()
-            .unwrap_err();
+            let err = loader(vec![(c4::Format::Csv, format!("a,{bad},macaddr")).into()])
+                .load::<c4::Value>()
+                .unwrap_err();
             assert!(matches!(err, c4::Error::Table { row: 1, .. }), "bad {bad}");
         }
     }
@@ -448,7 +555,7 @@ mod csv {
         // auto: not a number, stays a string
         assert_eq!(csv_leaf("a,0xff", "a"), c4::Value::String("0xff".into()));
         // explicit numeric type: plain Rust parsing only → error
-        let err = loader(vec![c4::Source::string(c4::Format::Csv, "a,0xff,u8")])
+        let err = loader(vec![(c4::Format::Csv, "a,0xff,u8").into()])
             .load::<c4::Value>()
             .unwrap_err();
         assert!(matches!(err, c4::Error::Table { row: 1, .. }));
@@ -457,10 +564,13 @@ mod csv {
     #[cfg(not(feature = "uuid"))]
     #[test]
     fn uuid_without_feature_is_unknown_type() {
-        let err = loader(vec![c4::Source::string(
-            c4::Format::Csv,
-            "a,550e8400-e29b-41d4-a716-446655440000,uuid",
-        )])
+        let err = loader(vec![
+            (
+                c4::Format::Csv,
+                "a,550e8400-e29b-41d4-a716-446655440000,uuid",
+            )
+                .into(),
+        ])
         .load::<c4::Value>()
         .unwrap_err();
         assert!(matches!(err, c4::Error::Table { row: 1, .. }));
@@ -524,24 +634,19 @@ mod csv {
     #[cfg(not(feature = "datetime"))]
     #[test]
     fn auto_without_dt_feature_keeps_string() {
-        let v: serde_json::Value = loader(vec![c4::Source::string(
-            c4::Format::Csv,
-            "when,2024-01-02T03:04:05Z",
-        )])
-        .load()
-        .unwrap();
+        let v: serde_json::Value =
+            loader(vec![(c4::Format::Csv, "when,2024-01-02T03:04:05Z").into()])
+                .load()
+                .unwrap();
         assert_eq!(v, serde_json::json!({ "when": "2024-01-02T03:04:05Z" }));
     }
 
     #[cfg(feature = "datetime")]
     #[test]
     fn bad_dt_reports_row() {
-        let err = loader(vec![c4::Source::string(
-            c4::Format::Csv,
-            "when,tomorrow,datetime",
-        )])
-        .load::<c4::Value>()
-        .unwrap_err();
+        let err = loader(vec![(c4::Format::Csv, "when,tomorrow,datetime").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
         match err {
             c4::Error::Table { row, .. } => assert_eq!(row, 1),
             other => panic!("expected Error::Table, got {other:?}"),
@@ -551,19 +656,16 @@ mod csv {
     #[cfg(feature = "ipv4")]
     #[test]
     fn bad_ipv4_reports_row() {
-        let err = loader(vec![c4::Source::string(
-            c4::Format::Csv,
-            "ip,10.0.0.999,ipv4",
-        )])
-        .load::<c4::Value>()
-        .unwrap_err();
+        let err = loader(vec![(c4::Format::Csv, "ip,10.0.0.999,ipv4").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
         assert!(matches!(err, c4::Error::Table { row: 1, .. }));
     }
 
     #[test]
     fn bad_cell_reports_row() {
         // 999 does not fit i8; no header, so the bad row is row 1
-        let err = loader(vec![c4::Source::folder(fx("csv_bad/config"))])
+        let err = loader(vec![fx("csv_bad/config").into()])
             .load::<c4::Value>()
             .unwrap_err();
         match err {
@@ -581,7 +683,7 @@ fn strict_json_rejects_comments() {
         ..c4::Options::default()
     };
     let mut options = options;
-    options.sources = vec![c4::Source::folder(fx("jsonc/config"))];
+    options.sources = vec![fx("jsonc/config").into()];
     let res = c4::Loader::new(options).load::<c4::Value>();
     assert!(matches!(res, Err(c4::Error::Parse { .. })));
 }
@@ -627,7 +729,7 @@ fn toml_datetime_serializes_as_text() {
 fn toml_datetime_follows_dt_feature() {
     use c4::{TracedValue, Value};
 
-    let traced = loader(vec![c4::Source::folder(fx("toml_datetime/config"))])
+    let traced = loader(vec![fx("toml_datetime/config").into()])
         .trace()
         .unwrap();
     let TracedValue::Object(root) = traced else {
@@ -675,8 +777,8 @@ fn custom_format_markdown_table() {
             .map(str::trim)
             .filter(|l| l.starts_with('|') && !l.contains("---"))
             // markdown tables always start with a header row — dropping
-            // it here keeps the data rows positional (key,value[,format])
-            // with no Options.table changes needed
+            // it here keeps the data rows positional (key,value[,format]),
+            // exactly what parse_table expects
             .skip(1)
             .map(|l| {
                 l.trim_matches('|')

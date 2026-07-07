@@ -7,18 +7,47 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use c4::{Loader, Options, Source};
+use c4::{Loader, Options, Order, Source};
 
 const USAGE: &str = "\
 usage: c4 [sources...] [options]
 
-  sources        folders and/or files (default: ./config)
-  -f <format>    output format: json|jsonc|yaml|toml|ini|env|csv|debug
-                 (default: auto — the -o extension, debug otherwise)
-  -o <path>      write to a file instead of stdout (format from extension)
-  --trace        annotate every value with the source it came from
-  --tree         tree mode: folders/files become keys instead of merging
-  -h, --help     show this help
+Load config sources (default: ./config) and write the merged result as
+one document. Sources are folders and/or files given positionally; later
+sources override earlier ones.
+
+Output:
+  -f, --format <fmt>    json|jsonc|yaml|toml|ini|env|csv|debug
+                        (default: the -o extension, else debug)
+  -o, --output <path>   write to a file instead of stdout (format from ext)
+  --trace               annotate every value with its source + format
+
+Options (mirror Options; each boolean also has a --no-<name> form):
+  --recursive           scan subdirectories (default off)
+  --flat                merge mode: ignore subfolder names (default on;
+                        --no-flat makes each subfolder a key)
+  --dot-key             expand dotted keys a.b.c -> {a:{b:{c}}} (default on)
+  --case-sensitive      case-sensitive key merge (default on)
+  --order <id>          folders_first_alphabetic (default) | alphabetic |
+                        reverse_alphabetic  (also: folders_first, reverse)
+  --tree                tree mode: folders/files become keys (default off)
+  --auto-files          tree: auto-detect extension-less files (default on)
+  --ignore-unknown-ext  tree: skip unknown-extension files (default on)
+  -h, --help            show this help
+
+Examples:
+  c4                                    # read ./config, print the debug form
+  c4 ./config ./local.toml -f yaml      # merge sources, print yaml
+  c4 -o merged.json                     # write json (format from extension)
+  c4 --trace -f json                    # provenance tree as json
+  c4 --tree ./config                    # tree mode: folders/files become keys
+  c4 --recursive --no-flat              # nest each subfolder as a key
+  c4 --order alphabetic                 # folders and files interleaved
+  c4 --no-dot-key --no-case-sensitive   # flat keys, case-insensitive merge
+
+Notes:
+  csv is positional key,value[,format]; for a header row or renamed/
+  reordered columns, use a CustomFormat (see the csv-header example).
 ";
 
 /// Output serializer. Jsonc collapses into Json; env and ini share the
@@ -78,19 +107,40 @@ fn run() -> Result<(), String> {
     let mut format_flag: Option<String> = None;
     let mut out_path: Option<PathBuf> = None;
     let mut trace = false;
-    let mut tree = false;
+    let mut opts = Options::default();
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "-f" | "--format" => {
-                format_flag = Some(args.next().ok_or("-f needs a format id")?);
-            }
-            "-o" | "--output" => {
-                out_path = Some(PathBuf::from(args.next().ok_or("-o needs a path")?));
-            }
+        // support both `--flag value` and `--flag=value` for value flags
+        let (name, inline) = match arg.split_once('=') {
+            Some((n, v)) => (n, Some(v.to_owned())),
+            None => (arg.as_str(), None),
+        };
+        // a value flag's argument comes from `--flag=v` or the next token
+        let mut value = |err: &str| inline.clone().or_else(|| args.next()).ok_or(err.to_owned());
+        match name {
+            "-f" | "--format" => format_flag = Some(value("-f needs a format id")?),
+            "-o" | "--output" => out_path = Some(PathBuf::from(value("-o needs a path")?)),
             "--trace" => trace = true,
-            "--tree" => tree = true,
+            "--order" => {
+                let id = value("--order needs an id")?;
+                opts.order =
+                    Order::from_id(&id).ok_or_else(|| format!("unknown order id '{id}'"))?;
+            }
+            "--recursive" => opts.recursive = true,
+            "--no-recursive" => opts.recursive = false,
+            "--flat" => opts.flat = true,
+            "--no-flat" => opts.flat = false,
+            "--dot-key" => opts.dot_key = true,
+            "--no-dot-key" => opts.dot_key = false,
+            "--case-sensitive" => opts.case_sensitive = true,
+            "--no-case-sensitive" => opts.case_sensitive = false,
+            "--tree" => opts.tree = true,
+            "--no-tree" => opts.tree = false,
+            "--auto-files" => opts.auto_files = true,
+            "--no-auto-files" => opts.auto_files = false,
+            "--ignore-unknown-ext" => opts.ignore_unknown_ext = true,
+            "--no-ignore-unknown-ext" => opts.ignore_unknown_ext = false,
             "-h" | "--help" => {
                 print!("{USAGE}");
                 return Ok(());
@@ -104,28 +154,15 @@ fn run() -> Result<(), String> {
 
     let format = resolve_format(format_flag.as_deref(), out_path.as_deref())?;
 
-    let sources: Vec<Source> = if sources.is_empty() {
-        vec![Source::folder("config")]
+    // a path source auto-detects folder vs file at load time (a missing
+    // path gets the loader's NotFound error); default source is ./config
+    opts.sources = if sources.is_empty() {
+        vec![Source::Path(PathBuf::from("config"))]
     } else {
-        sources
-            .into_iter()
-            // an existing file is a file source; anything else is treated
-            // as a folder (missing paths get the loader's NotFound error)
-            .map(|p| {
-                if p.is_file() {
-                    Source::file(p)
-                } else {
-                    Source::folder(p)
-                }
-            })
-            .collect()
+        sources.into_iter().map(Source::Path).collect()
     };
 
-    let loader = Loader::new(Options {
-        sources,
-        tree,
-        ..Options::default()
-    });
+    let loader = Loader::new(opts);
     // load the typed result first: debug prints it directly, every other
     // format goes through one serde_json tree
     let text = if trace {
@@ -267,34 +304,12 @@ fn csv_cell(value: &serde_json::Value) -> Result<(String, String), String> {
         serde_json::Value::Bool(b) => (b.to_string(), "bool".into()),
         serde_json::Value::Number(n) => (n.to_string(), csv_number_type(n).into()),
         serde_json::Value::String(s) => (s.clone(), "str".into()),
-        serde_json::Value::Array(items) => {
-            // homogeneous scalar arrays use arr:<t>; anything else is json
-            let types: Vec<&str> = items
-                .iter()
-                .map(|v| match v {
-                    serde_json::Value::Bool(_) => "bool",
-                    serde_json::Value::Number(n) => csv_number_type(n),
-                    serde_json::Value::String(_) => "str",
-                    _ => "",
-                })
-                .collect();
-            match types.first() {
-                Some(first) if !first.is_empty() && types.iter().all(|t| t == first) => {
-                    let cells: Vec<String> = items
-                        .iter()
-                        .map(|v| match v {
-                            serde_json::Value::String(s) => s.clone(),
-                            other => other.to_string(),
-                        })
-                        .collect();
-                    (cells.join(";"), format!("arr:{first}"))
-                }
-                _ => (
-                    serde_json::to_string(value).map_err(|e| e.to_string())?,
-                    "json".into(),
-                ),
-            }
-        }
+        // arrays emit as a single json cell (the table stage reads them
+        // back with the `json` type); objects are flattened away upstream
+        serde_json::Value::Array(_) => (
+            serde_json::to_string(value).map_err(|e| e.to_string())?,
+            "json".into(),
+        ),
         serde_json::Value::Object(_) => unreachable!("objects are flattened"),
     })
 }

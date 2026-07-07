@@ -1,3 +1,3 @@
-nothing,,null
-ports,80;443,arr:u16
+nothing,null,json
+ports,"[80,443]",json
 meta,"{""x"":1}",json

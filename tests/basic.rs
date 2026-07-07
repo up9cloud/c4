@@ -61,7 +61,7 @@ fn load_missing_path_is_not_found() {
 
 #[test]
 fn missing_folder_is_error() {
-    let res = loader(vec![c4::Source::folder(fx("does_not_exist"))]).load::<c4::Value>();
+    let res = loader(vec![fx("does_not_exist").into()]).load::<c4::Value>();
     assert!(matches!(res, Err(c4::Error::NotFound(_))));
 }
 
@@ -80,9 +80,7 @@ fn deserialize_into_struct() {
         db: Db,
     }
 
-    let cfg: Cfg = loader(vec![c4::Source::folder(fx("simple/config"))])
-        .load()
-        .unwrap();
+    let cfg: Cfg = loader(vec![fx("simple/config").into()]).load().unwrap();
     assert_eq!(cfg.name, "c4");
     assert_eq!(cfg.port, 8080);
     assert_eq!(cfg.db.host, "localhost");
@@ -96,9 +94,7 @@ fn trace_returns_typed_tree() {
     // only its serialized form
     use c4::{SourceRef, TracedValue, Value};
 
-    let traced = loader(vec![c4::Source::folder(fx("simple/config"))])
-        .trace()
-        .unwrap();
+    let traced = loader(vec![fx("simple/config").into()]).trace().unwrap();
 
     let TracedValue::Object(root) = traced else {
         panic!("root must be an object");
@@ -130,9 +126,7 @@ fn trace_returns_typed_tree() {
 fn value_accessors_and_indexing() {
     // dynamic access without deserializing: indexing yields Null for
     // missing keys, as_* converts leaves
-    let value: c4::Value = loader(vec![c4::Source::folder(fx("simple/config"))])
-        .load()
-        .unwrap();
+    let value: c4::Value = loader(vec![fx("simple/config").into()]).load().unwrap();
     assert_eq!(value["db"]["host"].as_str(), Some("localhost"));
     assert_eq!(value["db"]["port"].as_u64(), Some(5432));
     assert_eq!(value["port"].as_i64(), Some(8080));
@@ -153,6 +147,8 @@ fn format_ids_derive_from_values() {
     assert_eq!(Value::Bool(true).format_id(), "bool");
     assert_eq!(Value::Int(1).format_id(), "i64");
     assert_eq!(Value::Uint(1).format_id(), "u64");
+    assert_eq!(Value::Int128(1).format_id(), "i128");
+    assert_eq!(Value::Uint128(1).format_id(), "u128");
     assert_eq!(Value::Float(1.5).format_id(), "f64");
     assert_eq!(Value::String("x".into()).format_id(), "str");
     assert_eq!(
@@ -165,4 +161,22 @@ fn format_ids_derive_from_values() {
         "arr"
     );
     assert_eq!(Value::Array(vec![]).format_id(), "arr");
+}
+
+#[test]
+fn large_128_bit_values_serialize_as_strings() {
+    use c4::Value;
+    // fits u64 → JSON number; beyond u64 has no JSON number form, so it
+    // serializes as its decimal string (a lossy round trip)
+    assert_eq!(
+        serde_json::to_value(Value::Int128(42)).unwrap(),
+        serde_json::json!(42)
+    );
+    assert_eq!(
+        serde_json::to_value(Value::Uint128(u128::MAX)).unwrap(),
+        serde_json::json!("340282366920938463463374607431768211455")
+    );
+    // 128-bit still converts numerically via the accessors
+    assert_eq!(Value::Uint128(7).as_u64(), Some(7));
+    assert_eq!(Value::Int128(i128::MAX).as_i128(), Some(i128::MAX));
 }

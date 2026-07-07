@@ -12,6 +12,11 @@ pub enum Value {
     Bool(bool),
     Int(i64),
     Uint(u64),
+    /// 128-bit signed — only from the table `i128` type (never `auto`,
+    /// which stops at `i64`/`u64`/`f64`).
+    Int128(i128),
+    /// 128-bit unsigned — only from the table `u128` type.
+    Uint128(u128),
     Float(f64),
     String(String),
     /// An RFC 3339-style date or datetime, kept as its text. Produced by
@@ -90,6 +95,8 @@ impl Value {
         match self {
             Value::Int(i) => Some(*i),
             Value::Uint(u) => i64::try_from(*u).ok(),
+            Value::Int128(i) => i64::try_from(*i).ok(),
+            Value::Uint128(u) => i64::try_from(*u).ok(),
             _ => None,
         }
     }
@@ -98,6 +105,30 @@ impl Value {
         match self {
             Value::Uint(u) => Some(*u),
             Value::Int(i) => u64::try_from(*i).ok(),
+            Value::Int128(i) => u64::try_from(*i).ok(),
+            Value::Uint128(u) => u64::try_from(*u).ok(),
+            _ => None,
+        }
+    }
+
+    /// Any integer value as an `i128`.
+    pub fn as_i128(&self) -> Option<i128> {
+        match self {
+            Value::Int(i) => Some(i128::from(*i)),
+            Value::Uint(u) => Some(i128::from(*u)),
+            Value::Int128(i) => Some(*i),
+            Value::Uint128(u) => i128::try_from(*u).ok(),
+            _ => None,
+        }
+    }
+
+    /// Any integer value as a `u128`.
+    pub fn as_u128(&self) -> Option<u128> {
+        match self {
+            Value::Uint(u) => Some(u128::from(*u)),
+            Value::Int(i) => u128::try_from(*i).ok(),
+            Value::Int128(i) => u128::try_from(*i).ok(),
+            Value::Uint128(u) => Some(*u),
             _ => None,
         }
     }
@@ -108,6 +139,8 @@ impl Value {
             Value::Float(f) => Some(*f),
             Value::Int(i) => Some(*i as f64),
             Value::Uint(u) => Some(*u as f64),
+            Value::Int128(i) => Some(*i as f64),
+            Value::Uint128(u) => Some(*u as f64),
             _ => None,
         }
     }
@@ -130,7 +163,7 @@ impl Value {
     }
 
     /// The format id of this value — which parser produced it: `null`,
-    /// `bool`, `i64`, `u64`, `f64`, `str`, the typed ids (`dt`, `date`,
+    /// `bool`, `i64`, `u64`, `i128`, `u128`, `f64`, `str`, the typed ids (`dt`, `date`,
     /// `time`, `ipv4`, `ipv6`, `cidr`, `macaddr`, `macaddr8`, `uuid`),
     /// `arr:<t>` for homogeneous scalar arrays, `arr` for other arrays,
     /// `object` for objects. Integer widths normalize to the stored type
@@ -144,6 +177,8 @@ impl Value {
             Value::Bool(_) => "bool",
             Value::Int(_) => "i64",
             Value::Uint(_) => "u64",
+            Value::Int128(_) => "i128",
+            Value::Uint128(_) => "u128",
             Value::Float(_) => "f64",
             Value::String(_) => "str",
             Value::DateTime(_) => "dt",
@@ -233,6 +268,25 @@ impl<'de> serde::Deserialize<'de> for Value {
                 Ok(Value::Uint(v))
             }
 
+            fn visit_i128<E>(self, v: i128) -> std::result::Result<Value, E> {
+                // narrow back to the smaller variants when it fits, so a
+                // round trip through i64/u64-only formats stays stable
+                Ok(match i64::try_from(v) {
+                    Ok(i) => Value::Int(i),
+                    Err(_) => match u64::try_from(v) {
+                        Ok(u) => Value::Uint(u),
+                        Err(_) => Value::Int128(v),
+                    },
+                })
+            }
+
+            fn visit_u128<E>(self, v: u128) -> std::result::Result<Value, E> {
+                Ok(match u64::try_from(v) {
+                    Ok(u) => Value::Uint(u),
+                    Err(_) => Value::Uint128(v),
+                })
+            }
+
             fn visit_f64<E>(self, v: f64) -> std::result::Result<Value, E> {
                 Ok(Value::Float(v))
             }
@@ -297,6 +351,20 @@ impl serde::Serialize for Value {
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Int(i) => serializer.serialize_i64(*i),
             Value::Uint(u) => serializer.serialize_u64(*u),
+            // 128-bit narrows to the smaller numeric variants when it fits;
+            // a value past u64 has no JSON number form, so it serializes as
+            // its decimal string (a lossy round trip, like textual variants)
+            Value::Int128(i) => match i64::try_from(*i) {
+                Ok(v) => serializer.serialize_i64(v),
+                Err(_) => match u64::try_from(*i) {
+                    Ok(v) => serializer.serialize_u64(v),
+                    Err(_) => serializer.collect_str(i),
+                },
+            },
+            Value::Uint128(u) => match u64::try_from(*u) {
+                Ok(v) => serializer.serialize_u64(v),
+                Err(_) => serializer.collect_str(u),
+            },
             Value::Float(f) => serializer.serialize_f64(*f),
             Value::String(s) => serializer.serialize_str(s),
             Value::DateTime(s)

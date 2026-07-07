@@ -1,0 +1,11 @@
+[package]
+name = "csv-header"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# the CustomFormat reuses c4::parse_table (always available) — no c4 csv
+# feature needed; the `csv` crate does the actual row parsing
+c4-config = { path = "../.." }
+csv = "1"

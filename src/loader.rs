@@ -38,7 +38,7 @@ impl Loader {
     /// are a debug/testing aid, not config data.
     ///
     /// ```
-    /// use c4::{CustomFormat, Loader, Source, TracedValue};
+    /// use c4::{CustomFormat, Loader, TracedValue};
     ///
     /// # fn main() -> Result<(), c4::Error> {
     /// // a custom-format string source keeps this example runnable
@@ -53,7 +53,7 @@ impl Loader {
     /// });
     ///
     /// let traced = Loader::new(c4::Options {
-    ///     sources: vec![Source::string(kv, "port=8080")],
+    ///     sources: vec![(kv, "port=8080").into()],
     ///     ..c4::Options::default()
     /// })
     /// .trace()?;
@@ -70,10 +70,9 @@ impl Loader {
 
         for (index, source) in self.options.sources.iter().enumerate() {
             match source {
-                Source::Folder(path) => {
-                    if !path.is_dir() {
-                        return Err(Error::NotFound(path.clone()));
-                    }
+                // one path source: a folder whose files merge, or a single
+                // file — detected here (same rule as `c4::load`)
+                Source::Path(path) if path.is_dir() => {
                     if self.options.tree {
                         #[cfg(feature = "tree")]
                         self.merge_tree_folder(path, &extensions, &mut root)?;
@@ -97,10 +96,7 @@ impl Loader {
                         }
                     }
                 }
-                Source::File(path) => {
-                    if !path.is_file() {
-                        return Err(Error::NotFound(path.clone()));
-                    }
+                Source::Path(path) if path.is_file() => {
                     let claim = claimed_format(path, &extensions).ok_or_else(|| Error::Parse {
                         path: path.clone(),
                         message: "no active format claims this file's extension".into(),
@@ -110,6 +106,7 @@ impl Loader {
                         self.merge(&mut root, value, &SourceRef::File(path.clone()));
                     }
                 }
+                Source::Path(path) => return Err(Error::NotFound(path.clone())),
                 Source::Value(result) => {
                     let value = result.clone().map_err(|message| Error::Parse {
                         path: PathBuf::from(format!("value:{index}")),

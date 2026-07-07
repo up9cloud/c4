@@ -16,13 +16,16 @@ pub enum SourceRef {
     /// The file path as the loader saw it (source path joined with the
     /// relative path inside a folder source).
     File(PathBuf),
-    /// A [`Source::String`] entry, by its index in the sources list.
+    /// A [`Source::String`](crate::Source::String) entry, by its index in
+    /// the sources list.
     String(usize),
-    /// A [`Source::value`] entry, by its index in the sources list.
+    /// A [`Source::Value`](crate::Source::Value) entry (a 1-tuple
+    /// `(value,)` source), by its index in the sources list.
     Value(usize),
 }
 
-/// The result of [`Loader::trace`]: the merged tree with per-leaf
+/// The result of [`Loader::trace`](crate::Loader::trace): the merged tree
+/// with per-leaf
 /// provenance. Objects recurse; every non-object value (including whole
 /// arrays) is a [`TracedValue::Leaf`].
 ///

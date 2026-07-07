@@ -63,3 +63,37 @@ When touching feature-gated behavior, run the matrix: default,
 `--no-default-features`, and partial value-parser combinations
 (`csv,inet`, `csv,datetime`, `csv,macaddr`, …). Everything must pass
 with zero warnings.
+
+## Releasing a new version
+
+Publishing is automated: pushing a `v*` tag runs the full CI and, once it
+passes, publishes to crates.io via Trusted Publishing (OIDC — there is no
+token to manage).
+
+1. Commit all your changes first — a clean working tree keeps the tag
+   accurate.
+2. Bump `version` in `Cargo.toml` (the crates.io package is `c4-config`;
+   the lib/binary stay `c4`). `cargo publish` uses this version, so it
+   must not already be published.
+3. Tag it **with a `v` prefix** matching the version — `v0.1.1`, **not**
+   `0.1.1`. Only `v*` tags trigger the release workflow (`on.push.tags:
+   ["v*"]`).
+
+   ```sh
+   git tag v0.1.1
+   ```
+
+4. Push the commit and the tag. Pushing the tag kicks off CI; the
+   `publish` job runs `cargo publish` only after fmt + clippy, the MSRV
+   check, the whole test matrix and the examples all pass:
+
+   ```sh
+   git push && git push --tags
+   ```
+
+Notes:
+
+- The README install is `cargo add c4-config` (unpinned), so no version
+  string there needs updating.
+- If the release raises the minimum toolchain, bump `rust-version` in
+  `Cargo.toml` and the MSRV job in `.github/workflows/main.yml` together.

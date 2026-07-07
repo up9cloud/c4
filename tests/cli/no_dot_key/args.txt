@@ -1,0 +1,1 @@
+--no-dot-key -f json tests/fixtures/csv_dot_key/config

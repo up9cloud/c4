@@ -46,6 +46,8 @@ impl<'de> Deserializer<'de> for ValueDeserializer {
             Value::Bool(b) => visitor.visit_bool(b),
             Value::Int(i) => visitor.visit_i64(i),
             Value::Uint(u) => visitor.visit_u64(u),
+            Value::Int128(i) => visitor.visit_i128(i),
+            Value::Uint128(u) => visitor.visit_u128(u),
             Value::Float(f) => visitor.visit_f64(f),
             Value::String(s)
             | Value::DateTime(s)

@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::copy("config/app.yml", dir.join("app.yml"))?;
 
     let loader = c4::Loader::new(c4::Options {
-        sources: vec![c4::Source::folder(&dir)],
+        sources: vec![dir.as_path().into()],
         ..c4::Options::default()
     });
     let mut current: c4::Value = loader.load()?;

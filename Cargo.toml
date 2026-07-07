@@ -23,7 +23,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [features]
-default = ["jsonc", "yaml", "numeric"]
+default = ["jsonc", "yaml"]
 json = ["dep:serde_json"]
 jsonc = ["dep:jsonc-parser"]
 yaml = ["dep:serde_yaml"]
@@ -46,7 +46,6 @@ tree = []
 cli = [
     "json", "jsonc", "yaml", "toml", "ini", "env", "csv",
     "datetime", "inet", "macaddr", "uuid", "numeric", "tree",
-    "dep:serde_json",
 ]
 
 [[bin]]

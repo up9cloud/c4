@@ -9,6 +9,26 @@ use common::check;
 #[allow(unused_imports)] // unused in single-format builds
 use common::loader;
 
+#[test]
+fn order_converts_from_id() {
+    use c4::Order;
+    // `Options { order: "alphabetic".into(), .. }` — ids accept `-`/`_`
+    assert_eq!(Order::from("alphabetic"), Order::Alphabetic);
+    assert_eq!(Order::from("reverse-alphabetic"), Order::ReverseAlphabetic);
+    assert_eq!(Order::from("reverse"), Order::ReverseAlphabetic);
+    assert_eq!(Order::from("folders_first"), Order::FoldersFirstAlphabetic);
+    assert_eq!(Order::from("default"), Order::FoldersFirstAlphabetic);
+    assert_eq!(Order::from_id("nope"), None);
+    // each order round-trips through its canonical id
+    for o in [
+        Order::FoldersFirstAlphabetic,
+        Order::Alphabetic,
+        Order::ReverseAlphabetic,
+    ] {
+        assert_eq!(Order::from(o.id()), o);
+    }
+}
+
 #[cfg(feature = "yaml")]
 #[test]
 fn non_recursive_skips_subdirectories() {
@@ -131,7 +151,7 @@ mod tree {
     #[test]
     fn auto_file_content_is_typed() {
         let mut options = tree_options();
-        options.sources = vec![c4::Source::folder("tests/fixtures/tree_auto/config")];
+        options.sources = vec!["tests/fixtures/tree_auto/config".into()];
         let traced = c4::Loader::new(options).trace().unwrap();
         let c4::TracedValue::Object(root) = traced else {
             panic!("root must be an object");
@@ -149,7 +169,7 @@ mod tree {
     #[test]
     fn auto_file_content_stays_string_without_feature() {
         let mut options = tree_options();
-        options.sources = vec![c4::Source::folder("tests/fixtures/tree_auto/config")];
+        options.sources = vec!["tests/fixtures/tree_auto/config".into()];
         let v: serde_json::Value = c4::Loader::new(options).load().unwrap();
         assert_eq!(v, serde_json::json!({ "a": { "blabla": "1.1.1.1" } }));
     }
@@ -189,7 +209,7 @@ mod tree {
             ..tree_options()
         };
         let mut options = options;
-        options.sources = vec![c4::Source::folder("tests/fixtures/tree_unknown/config")];
+        options.sources = vec!["tests/fixtures/tree_unknown/config".into()];
         let res = c4::Loader::new(options).load::<c4::Value>();
         assert!(matches!(res, Err(c4::Error::Parse { .. })));
     }
@@ -203,7 +223,7 @@ fn tree_without_feature_is_unsupported() {
         ..c4::Options::default()
     };
     let mut options = options;
-    options.sources = vec![c4::Source::folder("tests/fixtures/simple/config")];
+    options.sources = vec!["tests/fixtures/simple/config".into()];
     let res = c4::Loader::new(options).load::<c4::Value>();
     assert!(matches!(res, Err(c4::Error::Unsupported(_))));
 }

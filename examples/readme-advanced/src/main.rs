@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use c4::{Format, Loader, Options, Source};
+use c4::{Format, Loader, Options};
 
 #[derive(serde::Serialize)]
 struct Overrides {
@@ -15,11 +15,14 @@ struct Overrides {
 }
 
 fn main() -> Result<(), c4::Error> {
+    // each source converts with .into(): a path-like value is a
+    // folder/file source, a (format, text) tuple is a string source, and
+    // a 1-tuple (value,) wraps a serde type as a typed override
     let loader = Loader::new(Options {
         sources: vec![
-            Source::folder(Path::new("config")), // any path-like type works
-            Source::string(Format::Jsonc, r#"{ "note": "from code" }"#),
-            Source::value(Overrides { debug: true }),
+            Path::new("config").into(),              // any path-like type works
+            (Format::Jsonc, r#"{ "note": "from code" }"#).into(),
+            (Overrides { debug: true },).into(),
         ],
         recursive: true,
         ..Options::default()

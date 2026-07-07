@@ -16,21 +16,34 @@ use serde_json::{Value as Json, json};
 #[test]
 fn single_file_source_accepts_path_types() {
     // &Path works the same as &str (anything Into<PathBuf>)
-    let v: Json = loader(vec![c4::Source::file(Path::new(
-        "tests/fixtures/simple/config/app.json",
-    ))])
+    let v: Json = loader(vec![
+        Path::new("tests/fixtures/simple/config/app.json").into(),
+    ])
     .load()
     .unwrap();
     assert_eq!(v, json!({ "name": "c4", "port": 8080 }));
+}
+
+#[cfg(any(feature = "json", feature = "jsonc"))]
+#[test]
+fn path_source_loads_folder_or_file() {
+    // one path source — folder vs single file decided at load time
+    let folder: Json = loader(vec![fx("simple/config").into()]).load().unwrap();
+    assert_eq!(folder["name"], json!("c4"));
+
+    let file: Json = loader(vec![fx("simple/config/app.json").into()])
+        .load()
+        .unwrap();
+    assert_eq!(file, json!({ "name": "c4", "port": 8080 }));
 }
 
 #[cfg(all(any(feature = "json", feature = "jsonc"), feature = "yaml"))]
 #[test]
 fn later_sources_override_earlier() {
     let loader = loader(vec![
-        c4::Source::folder(fx("multi_sources/base")),
-        c4::Source::folder(fx("multi_sources/override")),
-        c4::Source::file(fx("multi_sources/local.json")),
+        fx("multi_sources/base").into(),
+        fx("multi_sources/override").into(),
+        fx("multi_sources/local.json").into(),
     ]);
 
     let traced_json = serde_json::to_value(loader.trace().unwrap()).unwrap();
@@ -43,8 +56,8 @@ fn later_sources_override_earlier() {
 #[test]
 fn string_source_overrides_files() {
     let loader = loader(vec![
-        c4::Source::folder(fx("simple/config")),
-        c4::Source::string(c4::Format::Jsonc, r#"{ "port": 1 }"#),
+        fx("simple/config").into(),
+        (c4::Format::Jsonc, r#"{ "port": 1 }"#).into(),
     ]);
 
     // string sources serialize in traces as "string:<index in sources>"
@@ -86,11 +99,12 @@ fn value_source_overrides_files() {
     }
 
     let loader = loader(vec![
-        c4::Source::folder(fx("simple/config")),
-        c4::Source::value(Overrides {
+        fx("simple/config").into(),
+        (Overrides {
             port: 1,
             db: Db { host: "prod" },
-        }),
+        },)
+            .into(),
     ]);
 
     // typed sources trace as "value:<index in sources>"
@@ -119,12 +133,13 @@ fn value_source_serde_shapes() {
         Postgres { host: &'static str },
     }
     let v: c4::Value = loader(vec![
-        c4::Source::value(std::collections::BTreeMap::from([("mode", Mode::Fast)])),
-        c4::Source::value(std::collections::BTreeMap::from([(
+        (std::collections::BTreeMap::from([("mode", Mode::Fast)]),).into(),
+        (std::collections::BTreeMap::from([(
             "backend",
             Backend::Postgres { host: "db" },
-        )])),
-        c4::Source::value(None::<bool>),
+        )]),)
+            .into(),
+        (None::<bool>,).into(),
     ])
     .load()
     .unwrap();
@@ -133,9 +148,7 @@ fn value_source_serde_shapes() {
     assert_eq!(v["backend"]["Postgres"]["host"].as_str(), Some("db"));
 
     // non-string map keys fail at load time, not at construction
-    let res = loader(vec![c4::Source::value(std::collections::BTreeMap::from([
-        (1, 2),
-    ]))])
-    .load::<c4::Value>();
+    let res =
+        loader(vec![(std::collections::BTreeMap::from([(1, 2)]),).into()]).load::<c4::Value>();
     assert!(matches!(res, Err(c4::Error::Parse { .. })));
 }

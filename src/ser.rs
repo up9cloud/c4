@@ -62,6 +62,14 @@ impl Serializer for ValueSerializer {
         Ok(Value::Int(v))
     }
 
+    fn serialize_i128(self, v: i128) -> Result<Value, SerError> {
+        // narrow to the smaller variants when it fits (mirrors u64 → Int)
+        Ok(i64::try_from(v).map_or_else(
+            |_| u64::try_from(v).map_or(Value::Int128(v), Value::Uint),
+            Value::Int,
+        ))
+    }
+
     fn serialize_u8(self, v: u8) -> Result<Value, SerError> {
         Ok(Value::Int(v.into()))
     }
@@ -77,6 +85,10 @@ impl Serializer for ValueSerializer {
     fn serialize_u64(self, v: u64) -> Result<Value, SerError> {
         // like parsing: fits in i64 → Int, otherwise Uint
         Ok(i64::try_from(v).map_or(Value::Uint(v), Value::Int))
+    }
+
+    fn serialize_u128(self, v: u128) -> Result<Value, SerError> {
+        Ok(u64::try_from(v).map_or(Value::Uint128(v), Value::Uint))
     }
 
     fn serialize_f32(self, v: f32) -> Result<Value, SerError> {

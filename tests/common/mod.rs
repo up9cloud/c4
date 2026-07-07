@@ -38,7 +38,7 @@ pub fn loader(sources: Vec<c4::Source>) -> c4::Loader {
 /// Assert both the traced and the plain load of a case's `config/`
 /// folder against its two expectation files.
 pub fn check(case: &str, mut options: c4::Options) {
-    options.sources = vec![c4::Source::folder(format!("tests/fixtures/{case}/config"))];
+    options.sources = vec![format!("tests/fixtures/{case}/config").into()];
     let loader = c4::Loader::new(options);
 
     let traced = loader.trace().unwrap();

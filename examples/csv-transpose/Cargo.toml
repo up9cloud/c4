@@ -1,0 +1,12 @@
+[package]
+name = "csv-transpose"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# ipv4 so the transposed `1.1.1.1` cell becomes a typed Value::Ipv4; the
+# CustomFormat reuses c4::parse_table (always available), the `csv` crate
+# reads the grid
+c4-config = { path = "../..", features = ["ipv4"] }
+csv = "1"

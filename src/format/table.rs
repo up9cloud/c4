@@ -5,12 +5,16 @@
 //! options, the format column, `dot_key` expansion and row-order merging.
 //!
 //! Each typed cell picks a parser. Rust-built-in ones (`i8`–`u64`,
-//! `f32`/`f64`, `bool`, `str`) always exist; `dt` exists only with the
-//! `datetime` feature, `date`/`time`/`ipv4`/`ipv6`/`inet`/`cidr`/
-//! `macaddr`/`macaddr8`/`uuid` with their same-named features, and
-//! `json` only with the `json` format feature — without
-//! the feature the id is an unknown type and the row errors. Only `auto`
-//! degrades (it just stops guessing shapes whose feature is off).
+//! `i128`/`u128`, `f32`/`f64`, `bool`, `str`) always exist; `dt` exists
+//! only with the `datetime` feature,
+//! `date`/`time`/`ipv4`/`ipv6`/`inet`/`cidr`/`macaddr`/`macaddr8`/`uuid`
+//! with their same-named features, and `json` (a whole JSON document as
+//! the cell) whenever `json` or `jsonc` is compiled in — without the
+//! feature the id is an unknown type and the row errors. Only `auto`
+//! degrades (it just stops guessing shapes whose feature is off; it never
+//! produces `i128`/`u128` or `json`). An explicit `bool` cell accepts the
+//! loose token set (`true/false, t/f, yes/no, y/n, on/off, 1/0`); `auto`
+//! stays strict `true`/`false` (case-insensitive).
 
 use std::path::Path;
 
@@ -25,60 +29,36 @@ use std::path::Path;
     feature = "uuid"
 ))]
 use crate::valid;
-use crate::{Error, Options, Result, TableOptions, Value};
+use crate::{Error, Options, Result, Value};
 
-/// Row numbers in errors are 1-based indices into `rows` — the header
-/// row, when enabled, is row 1.
+/// Rows are interpreted **positionally**: `[key, value, format?]` per row
+/// (col 0 = key, col 1 = value, col 2 = optional type id). There is no
+/// built-in header handling — a header row, renamed or reordered columns
+/// are the job of a [`CustomFormat`](crate::CustomFormat) that drops/maps
+/// the header and lowers the file to these positional rows (see the
+/// `csv-header` example). Row numbers in errors are 1-based.
 pub(crate) fn parse(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
-    let table = &options.table;
-    let mut rows = rows.into_iter().enumerate();
-
-    // locate the key / value / format columns
-    let (key_col, value_col, type_col) = if table.header {
-        let (_, header) = rows
-            .next()
-            .ok_or_else(|| table_err(path, 1, "missing header row".into()))?;
-        let find = |name: &str| header.iter().position(|cell| cell.trim() == name);
-        let key_col = find(&table.columns.key)
-            .ok_or_else(|| table_err(path, 1, format!("missing column '{}'", table.columns.key)))?;
-        let value_col = find(&table.columns.value).ok_or_else(|| {
-            table_err(path, 1, format!("missing column '{}'", table.columns.value))
-        })?;
-        (key_col, value_col, find(&table.columns.format))
-    } else {
-        (0, 1, Some(2))
-    };
-
     let mut root = Value::Object(Default::default());
-    for (index, cells) in rows {
+    for (index, cells) in rows.into_iter().enumerate() {
         let row = index + 1;
         if cells.iter().all(|cell| cell.is_empty()) {
             continue; // blank row
         }
         let key = cells
-            .get(key_col)
+            .first()
             .ok_or_else(|| table_err(path, row, "missing key cell".into()))?
             .trim();
         let raw = cells
-            .get(value_col)
+            .get(1)
             .ok_or_else(|| table_err(path, row, "missing value cell".into()))?;
-        let declared = type_col
-            .and_then(|i| cells.get(i))
-            .map(|s| s.trim())
-            .unwrap_or("");
-        let value = convert(raw, declared, table, path, row)?;
+        let declared = cells.get(2).map(|s| s.trim()).unwrap_or("");
+        let value = convert(raw, declared, path, row)?;
         super::deep_merge(&mut root, super::expand_key(key, value, options.dot_key));
     }
     Ok(root)
 }
 
-fn convert(
-    raw: &str,
-    declared: &str,
-    table: &TableOptions,
-    path: &Path,
-    row: usize,
-) -> Result<Value> {
+fn convert(raw: &str, declared: &str, path: &Path, row: usize) -> Result<Value> {
     // aliases first, then concrete types
     let ty = match declared {
         "" | "auto" => return Ok(auto(raw)),
@@ -117,15 +97,17 @@ fn convert(
         "u16" => uint(u16::MAX.into()),
         "u32" => uint(u32::MAX.into()),
         "u64" => uint(u64::MAX),
+        // 128-bit is explicit-only — auto never widens past i64/u64/f64
+        "i128" => int128_literal(raw).map(Value::Int128).ok_or_else(&bad),
+        "u128" => uint128_literal(raw).map(Value::Uint128).ok_or_else(&bad),
         "f32" => float_literal(raw)
             .map(|f| Value::Float(f64::from(f as f32)))
             .ok_or_else(&bad),
         "f64" => float_literal(raw).map(Value::Float).ok_or_else(&bad),
-        "bool" => match raw {
-            "true" => Ok(Value::Bool(true)),
-            "false" => Ok(Value::Bool(false)),
-            _ => Err(fail(format!("'{raw}' is not a valid bool"))),
-        },
+        // explicit bool accepts the loose token set; auto stays strict
+        "bool" => parse_bool(raw)
+            .map(Value::Bool)
+            .ok_or_else(|| fail(format!("'{raw}' is not a valid bool"))),
         "str" => Ok(Value::String(raw.to_owned())),
         // without its feature each of these ids is cfg'd out of the match
         // and lands on the unknown-type error below; the shape rules live
@@ -177,21 +159,13 @@ fn convert(
         "uuid" => valid::uuid(raw)
             .then(|| Value::Uuid(raw.to_owned()))
             .ok_or_else(&bad),
-        "null" if table.types.null => Ok(Value::Null), // value cell is ignored
+        // a json cell holds a whole JSON document (array, object, null,
+        // …); available whenever json or jsonc is compiled in, parsed by
+        // whichever is present
         #[cfg(feature = "json")]
-        "json" if table.types.json => serde_json::from_str::<serde_json::Value>(raw)
-            .map(super::from_serde_json)
-            .map_err(|_| bad()),
-        _ if ty.starts_with("arr:") && table.types.array => {
-            let element = &ty[4..];
-            if matches!(element, "null" | "json") || element.starts_with("arr:") {
-                return Err(fail(format!("'{element}' is not a scalar element type")));
-            }
-            raw.split(table.delimiter)
-                .map(|cell| convert(cell, element, table, path, row))
-                .collect::<Result<Vec<_>>>()
-                .map(Value::Array)
-        }
+        "json" => super::json::parse(raw, path).map_err(|_| bad()),
+        #[cfg(all(feature = "jsonc", not(feature = "json")))]
+        "json" => super::jsonc::parse(raw, path).map_err(|_| bad()),
         _ => Err(fail(format!("unknown or disabled type '{declared}'"))),
     }
 }
@@ -203,10 +177,12 @@ fn convert(
 /// loose), then i64, then u64, then f64, otherwise string. Integers
 /// with leading zeros (`007`) stay strings.
 pub(crate) fn auto(raw: &str) -> Value {
-    match raw {
-        "true" => return Value::Bool(true),
-        "false" => return Value::Bool(false),
-        _ => {}
+    // strict: only the words true/false (any case) — no yes/on/1
+    if raw.eq_ignore_ascii_case("true") {
+        return Value::Bool(true);
+    }
+    if raw.eq_ignore_ascii_case("false") {
+        return Value::Bool(false);
     }
     // cheap fixed-shape scans first, parser-backed guesses after; the
     // strict types (ipv4/ipv6/cidr) run before inet, which only catches
@@ -348,6 +324,45 @@ fn split_radix(s: &str) -> Option<(String, u32)> {
         return None;
     }
     Some((format!("{sign}{digits}"), radix))
+}
+
+/// Loose boolean tokens for an explicit `bool` cell (case-insensitive):
+/// `true/false, t/f, yes/no, y/n, on/off, 1/0`. `auto` never uses this —
+/// it accepts only the words true/false.
+fn parse_bool(raw: &str) -> Option<bool> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" | "t" | "yes" | "y" | "on" | "1" => Some(true),
+        "false" | "f" | "no" | "n" | "off" | "0" => Some(false),
+        _ => None,
+    }
+}
+
+/// String → i128, honoring the `numeric` extended literal forms.
+fn int128_literal(raw: &str) -> Option<i128> {
+    #[cfg(feature = "numeric")]
+    {
+        let (s, _) = clean_literal(raw)?;
+        if let Some((digits, radix)) = split_radix(&s) {
+            return i128::from_str_radix(&digits, radix).ok();
+        }
+        s.parse().ok()
+    }
+    #[cfg(not(feature = "numeric"))]
+    raw.parse().ok()
+}
+
+/// String → u128, honoring the `numeric` extended literal forms.
+fn uint128_literal(raw: &str) -> Option<u128> {
+    #[cfg(feature = "numeric")]
+    {
+        let (s, _) = clean_literal(raw)?;
+        if let Some((digits, radix)) = split_radix(&s) {
+            return u128::from_str_radix(&digits, radix).ok();
+        }
+        s.parse().ok()
+    }
+    #[cfg(not(feature = "numeric"))]
+    raw.parse().ok()
 }
 
 /// String → i64, honoring the `numeric` extended literal forms.
