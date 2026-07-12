@@ -435,16 +435,17 @@ fn split_radix(s: &str) -> Option<(String, u32)> {
         Some(body) => ("-", body),
         None => ("", s.strip_prefix('+').unwrap_or(s)),
     };
-    let (digits, radix) =
-        if let Some(d) = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X")) {
-            (d, 16)
-        } else if let Some(d) = body.strip_prefix("0b").or_else(|| body.strip_prefix("0B")) {
-            (d, 2)
-        } else if let Some(d) = body.strip_prefix("0o").or_else(|| body.strip_prefix("0O")) {
-            (d, 8)
-        } else {
-            return None;
-        };
+    let prefixes = [
+        ("0x", 16),
+        ("0X", 16),
+        ("0b", 2),
+        ("0B", 2),
+        ("0o", 8),
+        ("0O", 8),
+    ];
+    let (digits, radix) = prefixes
+        .iter()
+        .find_map(|(prefix, radix)| body.strip_prefix(prefix).map(|d| (d, *radix)))?;
     if digits.is_empty() {
         return None;
     }
