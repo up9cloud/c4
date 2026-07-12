@@ -1,0 +1,31 @@
+{
+  "_extra": {
+    "note": { "$id": "Leaf", "value": "hi", "source": "tests/fixtures/excel_sheets/config/game.xlsx", "format": "str" }
+  },
+  "config": {
+    "max_players": { "$id": "Leaf", "value": 8, "source": "tests/fixtures/excel_sheets/config/game.xlsx", "format": "u64" },
+    "title": { "$id": "Leaf", "value": "Hello", "source": "tests/fixtures/excel_sheets/config/game.xlsx", "format": "str" }
+  },
+  "items": {
+    "$id": "Leaf",
+    "value": [
+      { "id": 1, "name": "sword", "price": 10.5 },
+      { "id": 2, "name": "shield", "price": 7.0 }
+    ],
+    "source": "tests/fixtures/excel_sheets/config/game.xlsx",
+    "format": "arr"
+  },
+  "meta": {
+    "author": { "$id": "Leaf", "value": "up9cloud", "source": "tests/fixtures/excel_sheets/config/game.xlsx", "format": "str" },
+    "version": { "$id": "Leaf", "value": 2, "source": "tests/fixtures/excel_sheets/config/game.xlsx", "format": "i64" }
+  },
+  "npcs": {
+    "$id": "Leaf",
+    "value": [
+      { "hp": 10, "name": "slime" },
+      { "hp": 12, "name": "bat" }
+    ],
+    "source": "tests/fixtures/excel_sheets/config/game.xlsx",
+    "format": "arr"
+  }
+}

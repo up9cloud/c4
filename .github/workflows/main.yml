@@ -75,6 +75,8 @@ jobs:
           - "--no-default-features --features ini"
           - "--no-default-features --features env,tree,inet"
           - "--no-default-features --features csv,datetime,macaddr,uuid"
+          - "--no-default-features --features excel,tree,datetime"
+          - "--no-default-features --features ods,tree"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -91,8 +93,12 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # the checked-in spreadsheet binaries must match their generator
       - run: |
-          for ex in readme-simple readme-advanced watch; do
+          cargo run --manifest-path tools/gen-sheets/Cargo.toml
+          git diff --exit-code
+      - run: |
+          for ex in readme-simple readme-advanced hot-reload csv-header csv-transpose xlsx-sheets csv-db; do
             echo "== $ex"
             (cd "examples/$ex" && cargo run --quiet > /tmp/out.log && diff /tmp/out.log output.log)
           done

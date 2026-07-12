@@ -8,13 +8,15 @@
 //! `i128`/`u128`, `f32`/`f64`, `bool`, `str`) always exist; `dt` exists
 //! only with the `datetime` feature,
 //! `date`/`time`/`ipv4`/`ipv6`/`inet`/`cidr`/`macaddr`/`macaddr8`/`uuid`
-//! with their same-named features, and `json` (a whole JSON document as
-//! the cell) whenever `json` or `jsonc` is compiled in — without the
-//! feature the id is an unknown type and the row errors. Only `auto`
-//! degrades (it just stops guessing shapes whose feature is off; it never
-//! produces `i128`/`u128` or `json`). An explicit `bool` cell accepts the
-//! loose token set (`true/false, t/f, yes/no, y/n, on/off, 1/0`); `auto`
-//! stays strict `true`/`false` (case-insensitive).
+//! with their same-named features, and the whole-document cells `json` /
+//! `jsonc` with theirs — cell format ids mirror the file formats
+//! one-to-one, each parsed by exactly its own parser (no cross-parser
+//! fallback). Without its feature an id is an unknown type and the row
+//! errors. Only `auto` degrades (it just stops guessing shapes whose
+//! feature is off; it never produces `i128`/`u128` or `json`). An
+//! explicit `bool` cell accepts the loose token set (`true/false, t/f,
+//! yes/no, y/n, on/off, 1/0`); `auto` stays strict `true`/`false`
+//! (case-insensitive).
 
 use std::path::Path;
 
@@ -29,15 +31,32 @@ use std::path::Path;
     feature = "uuid"
 ))]
 use crate::valid;
-use crate::{Error, Options, Result, Value};
+use crate::{Error, Options, Result, TableLayout, Value};
 
-/// Rows are interpreted **positionally**: `[key, value, format?]` per row
-/// (col 0 = key, col 1 = value, col 2 = optional type id). There is no
-/// built-in header handling — a header row, renamed or reordered columns
-/// are the job of a [`CustomFormat`](crate::CustomFormat) that drops/maps
-/// the header and lowers the file to these positional rows (see the
-/// `csv-header` example). Row numbers in errors are 1-based.
-pub(crate) fn parse(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
+/// Interpret rows under the given [`TableLayout`] — the single dispatch
+/// behind [`crate::parse_table`] and the per-source layouts of table
+/// sources; the layout is always explicit.
+pub(crate) fn parse(
+    rows: Vec<Vec<String>>,
+    layout: &TableLayout,
+    path: &Path,
+    options: &Options,
+) -> Result<Value> {
+    match layout {
+        TableLayout::Kv => kv(rows, path, options),
+        TableLayout::Db => db(rows, path, options),
+        TableLayout::Custom(custom) => (custom.parser)(rows, path, options),
+    }
+}
+
+/// The kv layout: rows are interpreted **positionally** as
+/// `[key, value, format?]` per row (col 0 = key, col 1 = value, col 2 =
+/// optional type id). There is no built-in header handling — a header
+/// row, renamed or reordered columns are the job of a
+/// [`CustomFormat`](crate::CustomFormat) that drops/maps the header and
+/// lowers the file to these positional rows (see the `csv-header`
+/// example). Row numbers in errors are 1-based.
+fn kv(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
     let mut root = Value::Object(Default::default());
     for (index, cells) in rows.into_iter().enumerate() {
         let row = index + 1;
@@ -58,10 +77,75 @@ pub(crate) fn parse(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> R
     Ok(root)
 }
 
-fn convert(raw: &str, declared: &str, path: &Path, row: usize) -> Result<Value> {
-    // aliases first, then concrete types
-    let ty = match declared {
-        "" | "auto" => return Ok(auto(raw)),
+/// The db layout: the first non-blank row holds the keys, the next one
+/// always the type ids, and every following row is one record — the
+/// result is an array of one object per record. Empty cells, cells
+/// beyond the key row's width, and columns whose key cell is empty are
+/// omitted from their record; `dot_key` nests dotted keys per record.
+/// Row numbers in errors are the incoming row indices (real spreadsheet
+/// rows for sheets), 1-based.
+fn db(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
+    let mut keys: Option<Vec<String>> = None;
+    let mut types: Vec<String> = Vec::new();
+    let mut saw_types = false;
+    let mut records = Vec::new();
+    for (index, cells) in rows.into_iter().enumerate() {
+        let row = index + 1;
+        if cells.iter().all(|cell| cell.is_empty()) {
+            continue; // blank row
+        }
+        let Some(keys) = &keys else {
+            keys = Some(cells.iter().map(|cell| cell.trim().to_owned()).collect());
+            continue;
+        };
+        if !saw_types {
+            // validate the type row eagerly: a kv-shaped sheet under
+            // the db default fails loudly here instead of silently
+            // parsing to an empty array (or erroring on some data cell)
+            for cell in &cells {
+                let declared = cell.trim();
+                if !declared.is_empty() && !known_type_id(declared) {
+                    return Err(table_err(
+                        path,
+                        row,
+                        format!(
+                            "unknown or disabled type id '{declared}' in the type row — \
+                             if this sheet is key,value rows, use the \"kv\" layout \
+                             (spreadsheets default to db)"
+                        ),
+                    ));
+                }
+            }
+            types = cells.iter().map(|cell| cell.trim().to_owned()).collect();
+            saw_types = true;
+            continue;
+        }
+        let mut record = Value::Object(Default::default());
+        for (column, raw) in cells.iter().enumerate() {
+            if raw.is_empty() {
+                continue; // sparse cell — the key is omitted from this record
+            }
+            let Some(key) = keys.get(column).filter(|key| !key.is_empty()) else {
+                continue; // no key above this column
+            };
+            let declared = types.get(column).map(String::as_str).unwrap_or("");
+            let value = convert(raw, declared, path, row)?;
+            super::deep_merge(&mut record, super::expand_key(key, value, options.dot_key));
+        }
+        records.push(record);
+    }
+    match keys {
+        // an entirely blank grid contributes nothing; a key row with no
+        // records is an empty array
+        None => Ok(Value::Null),
+        Some(_) => Ok(Value::Array(records)),
+    }
+}
+
+/// Resolve the type-id aliases to their canonical id (shared by
+/// [`convert`] and the type-row validation).
+fn canonical_type(declared: &str) -> &str {
+    match declared {
         "int" | "integer" => "i64",
         "uint" => "u64",
         "float" | "double" | "number" => "f64",
@@ -69,7 +153,48 @@ fn convert(raw: &str, declared: &str, path: &Path, row: usize) -> Result<Value> 
         "boolean" => "bool",
         "datetime" => "dt",
         other => other,
-    };
+    }
+}
+
+/// Is this a type id [`convert`] can handle in this build? Keep the
+/// arms in sync with `convert` (feature gates included).
+fn known_type_id(declared: &str) -> bool {
+    match canonical_type(declared) {
+        "" | "auto" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "i128"
+        | "u128" | "f32" | "f64" | "bool" | "str" => true,
+        #[cfg(feature = "datetime")]
+        "dt" => true,
+        #[cfg(feature = "date")]
+        "date" => true,
+        #[cfg(feature = "time")]
+        "time" => true,
+        #[cfg(feature = "ipv4")]
+        "ipv4" => true,
+        #[cfg(feature = "ipv6")]
+        "ipv6" => true,
+        #[cfg(feature = "inet")]
+        "inet" => true,
+        #[cfg(feature = "cidr")]
+        "cidr" => true,
+        #[cfg(feature = "macaddr")]
+        "macaddr" => true,
+        #[cfg(feature = "macaddr8")]
+        "macaddr8" => true,
+        #[cfg(feature = "uuid")]
+        "uuid" => true,
+        #[cfg(feature = "json")]
+        "json" => true,
+        #[cfg(feature = "jsonc")]
+        "jsonc" => true,
+        _ => false,
+    }
+}
+
+fn convert(raw: &str, declared: &str, path: &Path, row: usize) -> Result<Value> {
+    let ty = canonical_type(declared);
+    if matches!(ty, "" | "auto") {
+        return Ok(auto(raw));
+    }
 
     let fail = |message: String| table_err(path, row, message);
     // every "the value does not fit its declared format" failure shares
@@ -159,13 +284,13 @@ fn convert(raw: &str, declared: &str, path: &Path, row: usize) -> Result<Value> 
         "uuid" => valid::uuid(raw)
             .then(|| Value::Uuid(raw.to_owned()))
             .ok_or_else(&bad),
-        // a json cell holds a whole JSON document (array, object, null,
-        // …); available whenever json or jsonc is compiled in, parsed by
-        // whichever is present
+        // json/jsonc cells hold a whole document (array, object, null,
+        // …); cell format ids mirror the file formats one-to-one — each
+        // id uses exactly its own format's parser and feature
         #[cfg(feature = "json")]
         "json" => super::json::parse(raw, path).map_err(|_| bad()),
-        #[cfg(all(feature = "jsonc", not(feature = "json")))]
-        "json" => super::jsonc::parse(raw, path).map_err(|_| bad()),
+        #[cfg(feature = "jsonc")]
+        "jsonc" => super::jsonc::parse(raw, path).map_err(|_| bad()),
         _ => Err(fail(format!("unknown or disabled type '{declared}'"))),
     }
 }

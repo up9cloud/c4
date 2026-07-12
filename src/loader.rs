@@ -49,7 +49,7 @@ impl Loader {
     ///         .lines()
     ///         .map(|line| line.split('=').map(str::to_owned).collect())
     ///         .collect();
-    ///     c4::parse_table(rows, path, options)
+    ///     c4::parse_table(rows, &c4::TableLayout::Kv, path, options)
     /// });
     ///
     /// let traced = Loader::new(c4::Options {
@@ -107,6 +107,34 @@ impl Loader {
                     }
                 }
                 Source::Path(path) => return Err(Error::NotFound(path.clone())),
+                Source::Table {
+                    path,
+                    format,
+                    sheet,
+                    layout,
+                } => {
+                    // one file of a table format, read under an explicit
+                    // layout (and, for spreadsheets, an explicit sheet)
+                    if !path.is_file() {
+                        return Err(Error::Parse {
+                            path: path.clone(),
+                            message: "table source is not a file (table sources read \
+                                      exactly one file; for in-code text use a \
+                                      (format, text) string source)"
+                                .into(),
+                        });
+                    }
+                    let value = format::parse_table_file(
+                        *format,
+                        path,
+                        sheet.as_deref(),
+                        layout,
+                        &self.options,
+                    )?;
+                    if !matches!(value, Value::Null) {
+                        self.merge(&mut root, value, &SourceRef::File(path.clone()));
+                    }
+                }
                 Source::Value(result) => {
                     let value = result.clone().map_err(|message| Error::Parse {
                         path: PathBuf::from(format!("value:{index}")),
@@ -119,9 +147,13 @@ impl Loader {
                 Source::String { format, content } => {
                     let label = PathBuf::from(format!("string:{index}"));
                     let value = match format {
-                        FormatKind::Builtin(format) => {
-                            format::parse(*format, content, &label, &self.options)?
-                        }
+                        FormatKind::Builtin(format) => format::parse(
+                            *format,
+                            content,
+                            &crate::TableLayout::Kv,
+                            &label,
+                            &self.options,
+                        )?,
                         FormatKind::Custom(custom) => {
                             (custom.parser)(content, &label, &self.options)?
                         }
@@ -136,13 +168,24 @@ impl Loader {
     }
 
     fn parse_file(&self, claim: Claim, path: &Path) -> Result<Value> {
-        let text = std::fs::read_to_string(path).map_err(Error::Io)?;
         match claim {
-            Claim::Builtin(format) => format::parse(format, &text, path, &self.options),
+            Claim::Builtin { format, spec } => {
+                // the claiming formats entry decides the table layout
+                let layout = &self.options.formats[spec].layout;
+                // binary formats (spreadsheets) parse from the path
+                // directly — their bytes must never go through the text
+                // pipeline
+                if format::is_binary(format) {
+                    return format::parse_binary(format, path, layout, &self.options);
+                }
+                let text = std::fs::read_to_string(path).map_err(Error::Io)?;
+                format::parse(format, &text, layout, path, &self.options)
+            }
             Claim::Custom(index) => {
                 let FormatKind::Custom(custom) = &self.options.formats[index].format else {
                     unreachable!("custom claims always index custom entries");
                 };
+                let text = std::fs::read_to_string(path).map_err(Error::Io)?;
                 (custom.parser)(&text, path, &self.options)
             }
         }
@@ -236,11 +279,12 @@ fn walk_tree(
     Ok(())
 }
 
-/// What an extension resolves to: a built-in format, or a custom entry of
-/// [`Options::formats`] (by index).
+/// What an extension resolves to: a built-in format (with the index of
+/// its [`Options::formats`] entry, whose layout applies), or a custom
+/// entry (by index).
 #[derive(Clone, Copy)]
 enum Claim {
-    Builtin(Format),
+    Builtin { format: Format, spec: usize },
     Custom(usize),
 }
 
@@ -251,7 +295,10 @@ fn extension_map(options: &Options) -> Vec<(String, Claim)> {
     let mut map: Vec<(String, Claim)> = Vec::new();
     for (index, spec) in options.formats.iter().enumerate() {
         let claim = match &spec.format {
-            FormatKind::Builtin(format) => Claim::Builtin(*format),
+            FormatKind::Builtin(format) => Claim::Builtin {
+                format: *format,
+                spec: index,
+            },
             FormatKind::Custom(_) => Claim::Custom(index),
         };
         for ext in &spec.extensions {

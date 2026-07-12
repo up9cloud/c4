@@ -1,0 +1,4 @@
+{
+  "port": 8080,
+  "greeting": "hello", // comments are fine in jsonc
+}

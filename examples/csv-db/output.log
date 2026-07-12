@@ -1,0 +1,3 @@
+Item { id: 1, name: "sword", price: 10.5, stats: Some(Stats { atk: 7 }) }
+Item { id: 2, name: "shield", price: 7.0, stats: None }
+Item { id: 3, name: "potion", price: 1.25, stats: None }

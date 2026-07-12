@@ -1,0 +1,6 @@
+title       = Some("Hello")
+max_players = Some(8)
+author      = Some("up9cloud")
+extra note  = Some("hi")
+item        = Item { id: 1, name: "sword", price: 10.5 }
+item        = Item { id: 2, name: "shield", price: 7.0 }

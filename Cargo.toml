@@ -3,7 +3,7 @@ name = "c4-config"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Load a folder of config files (jsonc/yaml/json/toml/ini/env/csv) into one deep-merged value"
+description = "Load a folder of config files (jsonc/yaml/json/toml/ini/env/csv/xlsx/ods) into one deep-merged value"
 license = "MIT"
 repository = "https://github.com/up9cloud/c4"
 autoexamples = false
@@ -15,6 +15,8 @@ jsonc-parser = { version = "0.26", optional = true }
 serde_yaml = { version = "0.9", optional = true }
 toml = { version = "0.8", optional = true }
 csv = { version = "1", optional = true }
+# pinned to 0.35: calamine 0.36 requires rustc 1.88, past our MSRV (1.85)
+calamine = { version = "0.35", optional = true }
 
 [lib]
 name = "c4"
@@ -24,7 +26,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [features]
-default = ["jsonc", "yaml"]
+default = ["jsonc"]
 json = ["dep:serde_json"]
 jsonc = ["dep:jsonc-parser"]
 yaml = ["dep:serde_yaml"]
@@ -32,6 +34,8 @@ toml = ["dep:toml"]
 ini = []
 env = []
 csv = ["dep:csv"]
+excel = ["dep:calamine"]
+ods = ["dep:calamine"]
 date = []
 time = []
 ipv4 = []
@@ -46,6 +50,7 @@ numeric = []
 tree = []
 cli = [
     "json", "jsonc", "yaml", "toml", "ini", "env", "csv",
+    "excel", "ods",
     "datetime", "inet", "macaddr", "uuid", "numeric", "tree",
 ]
 

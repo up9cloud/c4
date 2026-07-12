@@ -1,0 +1,6 @@
+{
+  "$id": "Leaf",
+  "value": [{ "name": "c4", "port": 8080 }],
+  "source": "tests/fixtures/ods_basic/config/app.ods",
+  "format": "arr"
+}

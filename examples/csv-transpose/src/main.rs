@@ -48,7 +48,7 @@ fn main() -> Result<(), Error> {
                     .collect()
             })
             .collect();
-        c4::parse_table(rows, path, options)
+        c4::parse_table(rows, &c4::TableLayout::Kv, path, options)
     });
 
     let grid = "\

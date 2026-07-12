@@ -1,0 +1,9 @@
+[package]
+name = "gen-sheets"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# no dependencies on purpose: a hand-rolled stored-entry zip writer and
+# the few XML strings below are all a deterministic generator needs
+[dependencies]

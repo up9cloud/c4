@@ -11,6 +11,9 @@ mod ini;
 mod json;
 #[cfg(feature = "jsonc")]
 mod jsonc;
+// both spreadsheet formats (binary, calamine-read) live in one module
+#[cfg(any(feature = "excel", feature = "ods"))]
+mod sheet;
 // the generic table stage is always compiled: custom formats reuse it via
 // `crate::parse_table` regardless of which format features are on
 pub(crate) mod table;
@@ -25,11 +28,95 @@ mod yaml;
 
 use std::path::Path;
 
-use crate::{Error, Format, Options, Result, Value};
+use crate::{Error, Format, Options, Result, TableLayout, Value};
 
-pub(crate) fn parse(format: Format, text: &str, path: &Path, options: &Options) -> Result<Value> {
-    let _ = (text, options); // unused when few formats are compiled in
+/// Binary formats parse from the path, never from text — the loader
+/// calls [`parse_binary`] for them instead of reading the file to a
+/// string, and [`parse`] (the text entry, which string sources use)
+/// rejects them.
+pub(crate) fn is_binary(format: Format) -> bool {
+    matches!(format, Format::Excel | Format::Ods)
+}
+
+pub(crate) fn parse_binary(
+    format: Format,
+    path: &Path,
+    layout: &TableLayout,
+    options: &Options,
+) -> Result<Value> {
+    let _ = (layout, options); // unused when neither spreadsheet feature is on
     match format {
+        #[cfg(feature = "excel")]
+        Format::Excel => sheet::parse_excel(path, None, layout, options),
+        #[cfg(feature = "ods")]
+        Format::Ods => sheet::parse_ods(path, None, layout, options),
+        other => Err(Error::Parse {
+            path: path.to_path_buf(),
+            message: format!("format '{}' is not compiled into this build", other.id()),
+        }),
+    }
+}
+
+/// A `Source::Table`: one file of a table format read under an explicit
+/// [`TableLayout`], optionally naming a spreadsheet sheet.
+pub(crate) fn parse_table_file(
+    format: Format,
+    path: &Path,
+    sheet_name: Option<&str>,
+    layout: &TableLayout,
+    options: &Options,
+) -> Result<Value> {
+    let _ = (sheet_name, layout, options); // unused without table-format features
+    let parse_error = |message: String| Error::Parse {
+        path: path.to_path_buf(),
+        message,
+    };
+    match format {
+        #[cfg(feature = "csv")]
+        Format::Csv => {
+            if let Some(sheet) = sheet_name {
+                // also catches a 3-tuple layout typo, which DWIM turns
+                // into a sheet name — echo it so the mistake is visible
+                return Err(parse_error(format!(
+                    "csv sources cannot name a sheet (got '{sheet}'; \
+                     did you mean a layout — kv, db?)"
+                )));
+            }
+            let text = std::fs::read_to_string(path).map_err(Error::Io)?;
+            csv::parse(&text, layout, path, options)
+        }
+        #[cfg(feature = "excel")]
+        Format::Excel => sheet::parse_excel(path, sheet_name, layout, options),
+        #[cfg(feature = "ods")]
+        Format::Ods => sheet::parse_ods(path, sheet_name, layout, options),
+        // table formats whose feature is off keep the usual message
+        #[allow(unreachable_patterns)] // reachable only with features off
+        Format::Csv | Format::Excel | Format::Ods => Err(parse_error(format!(
+            "format '{}' is not compiled into this build",
+            format.id()
+        ))),
+        other => Err(parse_error(format!(
+            "'{}' is not a table format (csv, excel, ods)",
+            other.id()
+        ))),
+    }
+}
+
+pub(crate) fn parse(
+    format: Format,
+    text: &str,
+    layout: &TableLayout,
+    path: &Path,
+    options: &Options,
+) -> Result<Value> {
+    let _ = (text, layout, options); // unused when few formats are compiled in
+    match format {
+        // binary formats never come through the text pipeline; a string
+        // source naming one lands here
+        Format::Excel | Format::Ods => Err(Error::Parse {
+            path: path.to_path_buf(),
+            message: format!("'{}' is a binary format — file sources only", format.id()),
+        }),
         #[cfg(feature = "json")]
         Format::Json => json::parse(text, path),
         #[cfg(feature = "jsonc")]
@@ -43,7 +130,7 @@ pub(crate) fn parse(format: Format, text: &str, path: &Path, options: &Options) 
         #[cfg(feature = "env")]
         Format::Env => env::parse(text, options),
         #[cfg(feature = "csv")]
-        Format::Csv => csv::parse(text, path, options),
+        Format::Csv => csv::parse(text, layout, path, options),
         #[allow(unreachable_patterns)]
         other => Err(Error::Parse {
             path: path.to_path_buf(),

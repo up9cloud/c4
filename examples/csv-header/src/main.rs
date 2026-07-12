@@ -46,7 +46,7 @@ fn main() -> Result<(), Error> {
             }
             rows.push(row);
         }
-        c4::parse_table(rows, path, options)
+        c4::parse_table(rows, &c4::TableLayout::Kv, path, options)
     });
 
     // the header names the columns, so they can be reordered freely — here

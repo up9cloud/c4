@@ -1,0 +1,19 @@
+{
+  "$id": "Leaf",
+  "value": [
+    {
+      "db": { "host": "localhost" },
+      "debug": true,
+      "name": "c4",
+      "pi": 1.5,
+      "port": 8080
+    },
+    {
+      "debug": false,
+      "name": "c5",
+      "port": 9090
+    }
+  ],
+  "source": "tests/fixtures/excel_basic/config/app.xlsx",
+  "format": "arr"
+}

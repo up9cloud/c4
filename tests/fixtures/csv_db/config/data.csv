@@ -1,0 +1,4 @@
+id,name,price,stats.atk
+u32,str,f64,i32
+1,sword,10.5,7
+2,shield,7,

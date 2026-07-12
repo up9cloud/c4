@@ -2,3 +2,5 @@
 /.claude/
 /examples/*/target/
 /examples/*/Cargo.lock
+/tools/*/target/
+/tools/*/Cargo.lock

@@ -1,8 +1,17 @@
 //! Load config from folders, files and in-code strings/values into one
-//! deep-merged [`Value`]. Formats (jsonc, yaml, json, toml, ini, env, csv)
-//! are individually Cargo-feature-gated, the table (csv) format's cells
-//! carry typed values, and every value can be traced to the source it came
-//! from.
+//! deep-merged [`Value`]. File formats (jsonc, yaml, json, toml, ini, env,
+//! csv, excel, ods) are individually Cargo-feature-gated, the table
+//! formats' cells (csv and spreadsheet sheets) carry typed values, and
+//! every value can be traced to the source it came from.
+//!
+//! What c4 offers is less a parser than a **convention** (in the spirit of
+//! node-config): deterministic override order, deep merge, and a
+//! `key,value[,format]` table rule that lets non-programmers own config in
+//! CSV or Excel/OpenDocument spreadsheets — plus documented custom-format
+//! escape hatches for everything else. If all you need is one simple file
+//! read once, bespoke zero-dependency loading code (your AI writes it) is
+//! lighter than any library; c4 earns its place when a team needs shared
+//! rules.
 //!
 //! The [README] is the quick start; this page is the full reference (and
 //! `CLAUDE.md` in the repo is the exhaustive spec). Most examples below run
@@ -15,14 +24,14 @@
 //! # Quick start
 //!
 //! One generic [`load`] takes a path — a folder whose files deep-merge, or
-//! a single file — with default options (formats: jsonc + yaml). The
+//! a single file — with default options (default format: jsonc). The
 //! annotated target type decides what you get: a dynamic [`Value`] or your
 //! own serde type.
 //!
 //! ```no_run
 //! # fn main() -> Result<(), c4::Error> {
 //! let value: c4::Value = c4::load("config")?;   // a folder …
-//! let one: c4::Value = c4::load("app.yml")?;    // … or a single file
+//! let one: c4::Value = c4::load("app.json")?;   // … or a single file
 //! let host = value["db"]["host"].as_str().unwrap_or("localhost");
 //! # Ok(())
 //! # }
@@ -38,9 +47,13 @@
 //! [`trace`](Loader::trace). You never name [`Source`]: `sources` is a
 //! `Vec<Source>` and each element converts with `.into()` — a path-like
 //! value (`&str`/`String`/`&Path`/`PathBuf`) is a folder/file source, a
-//! `(format, text)` tuple is an in-code string source, and a **1-tuple**
+//! `(format, text)` tuple is an in-code string source, a **1-tuple**
 //! `(value,)` wraps any serde type as a typed override (the trailing comma
-//! is what keeps it distinct — see [`Source`]).
+//! is what keeps it distinct — see [`Source`]), and a
+//! `(format, path, layout)` / `(format, path, sheet, layout)` tuple is a
+//! **table source** — one csv/excel/ods file read under an explicit
+//! [`TableLayout`]; naming a spreadsheet sheet is always the 4-tuple
+//! (see *Table formats* below).
 //!
 //! ```no_run
 //! use std::path::Path;
@@ -61,14 +74,18 @@
 //!             ("jsonc", r#"{ "note": "from code" }"#).into(), // string source, by format id
 //!             (Format::Toml, "debug = true").into(),          // string source, by Format
 //!             (Overrides { debug: true },).into(),            // typed override (1-tuple)
+//!             (Format::Csv, "./items.csv", "db").into(),      // table source: file + layout
+//!             (Format::Excel, "./game.xlsx", "drops", "db").into(), // sheet + layout (4-tuple)
 //!         ],
 //!         // which formats read which extensions; the last claimer wins.
-//!         // all four conversion forms — id/Format × default/custom exts:
+//!         // all conversion forms — id/Format × default/custom exts,
+//!         // optionally + a table layout for every file the entry claims:
 //!         formats: vec![
 //!             "jsonc".into(),                                 // format id, default extensions
 //!             Format::Toml.into(),                            // Format, default extensions
 //!             (Format::Yaml, ["yml", "yaml", "conf"]).into(), // Format + custom extensions
 //!             ("jsonc", ["json", "jsonc"]).into(),            // format id + custom extensions
+//!             (Format::Csv, ["csv"], "db").into(),            // + layout: all csv = record grids
 //!         ],
 //!         recursive: true,
 //!         ..Options::default()
@@ -92,7 +109,7 @@
 //!         .filter(|l| !l.trim().is_empty())
 //!         .map(|l| l.split_whitespace().map(str::to_owned).collect())
 //!         .collect();
-//!     c4::parse_table(rows, path, options)
+//!     c4::parse_table(rows, &c4::TableLayout::Kv, path, options)
 //! });
 //! let value: c4::Value = Loader::new(Options {
 //!         sources: vec![
@@ -112,22 +129,26 @@
 //! Every [`Options`] field is documented on the struct. In brief:
 //! `sources`, `formats`, `recursive`, `flat` (merge-mode subfolder
 //! nesting), `dot_key`, `case_sensitive`, `order` (an [`Order`] or an id
-//! like `"alphabetic".into()`), and the tree-mode trio `tree`,
-//! `auto_files`, `ignore_unknown_ext`.
+//! like `"alphabetic".into()`), the tree-mode trio `tree`,
+//! `auto_files`, `ignore_unknown_ext`, and the spreadsheet pair
+//! `ignore_sheet_prefix`, `ignore_hidden_sheets`.
 //!
 //! # Cargo features
 //!
-//! `default = ["jsonc", "yaml"]`; at least one **format** feature is
-//! required (a compile error otherwise). Value-parser features are pure
-//! std (no extra dependencies). Cargo unions features across the whole
-//! build graph, so only applications should turn format features on.
+//! `default = ["jsonc"]` — deliberately light, one parser dependency; at
+//! least one **format** feature is required (a compile error otherwise).
+//! Value-parser features are pure std (no extra dependencies). Cargo
+//! unions features across the whole build graph, so only applications
+//! should turn format features on.
 //!
 //! | Feature | Enables |
 //! | ------- | ------- |
-//! | `jsonc` *(default)* | JSONC files (comments + trailing commas) |
-//! | `yaml` *(default)* | YAML files |
+//! | `jsonc` *(default)* | JSONC files (comments + trailing commas); also the `jsonc` table cell |
+//! | `yaml` | YAML files |
 //! | `json` | strict JSON files; also the table `json` cell |
 //! | `toml` / `ini` / `env` / `csv` | those file formats |
+//! | `excel` | Excel workbooks (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`) |
+//! | `ods` | OpenDocument spreadsheets (`.ods`) |
 //! | `tree` | tree mode ([`Options::tree`]) |
 //! | `datetime` (= `date` + `time`) | the `dt` table type |
 //! | `date`, `time` | the `date` / `time` table types |
@@ -138,7 +159,7 @@
 //! | `numeric` | extended table numeric literals (`0x`, `_`, `123n`) |
 //! | `cli` | the `c4` binary (implies all of the above) |
 //!
-//! # Formats
+//! # File formats
 //!
 //! Format and file extension are separate things: each format claims a set
 //! of default extensions, and both sides are configurable. Extension
@@ -153,12 +174,14 @@
 //! | Format  | Default extensions | Feature |
 //! | ------- | ------------------ | ------- |
 //! | `jsonc` | `.json`, `.jsonc`  | default |
-//! | `yaml`  | `.yml`, `.yaml`    | default |
+//! | `yaml`  | `.yml`, `.yaml`    | `yaml`  |
 //! | `json`  | `.json` (strict)   | `json`  |
 //! | `toml`  | `.toml`            | `toml`  |
 //! | `ini`   | `.ini`             | `ini`   |
 //! | `env`   | `.env`, `*.env`    | `env`   |
 //! | `csv`   | `.csv`             | `csv`   |
+//! | `excel` | `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | `excel` |
+//! | `ods`   | `.ods`             | `ods`   |
 //!
 //! # Merge rules
 //!
@@ -188,16 +211,67 @@
 //!
 //! # Table formats
 //!
-//! Table rows map to config entries **positionally** as `key,value[,format]`;
-//! the format column is optional (missing or empty = `auto`). Type ids
-//! `i8`–`u64`, `i128`/`u128`, `f32`/`f64`, `bool`, `str`, `auto` always
-//! exist; `dt`/`date`/`time`/`ipv4`/`ipv6`/`inet`/`cidr`/`macaddr`/
-//! `macaddr8`/`uuid` follow their features, and `json` (a whole JSON
-//! document as one cell) needs `json` or `jsonc`. `auto` tries
-//! bool → date/time/dt → uuid → mac → ip → integer → float → string, and
-//! never widens past `i64`/`u64` (use an explicit `i128`/`u128` cell for
-//! bigger integers). An explicit `bool` cell also accepts
-//! `t/f`, `yes/no`, `y/n`, `on/off`, `1/0` (case-insensitive).
+//! Table files (csv, and each spreadsheet sheet) parse under a
+//! [`TableLayout`]. Each format has a default —
+//! [`Format::default_layout`]: **`kv` for csv, `db` for excel/ods**
+//! (spreadsheets are grids) — overridable per source with a table-source
+//! tuple or per extension in `formats`:
+//!
+//! - **`kv`** (csv default): `key,value[,format]` rows, one config entry
+//!   per row.
+//! - **`db`** (spreadsheet default): a record grid — row 1 holds the
+//!   keys, row 2 always the
+//!   type ids (empty cell = `auto`), every following row is one record;
+//!   the file parses to an **array** of objects, so a config sheet full
+//!   of game items deserializes straight into a `Vec<Item>`. Empty cells
+//!   are omitted from their record.
+//! - **a [`CustomLayout`]**: your callback over the raw rows — reshape
+//!   them and call [`parse_table`]. A db grid
+//!   *without* a type row is the canonical case: insert a row of `auto`
+//!   cells after the header and delegate to `db` (see the `xlsx-sheets`
+//!   example).
+//!
+//! ```text
+//! sources: vec![
+//!     (Format::Csv,   "items.csv", "db").into(),          // layout per file
+//!     (Format::Excel, "game.xlsx", "config", "kv").into(),// sheet + layout (4-tuple)
+//! ]
+//! formats: vec![
+//!     (Format::Csv, ["csv"], "db").into(),   // or per extension: every
+//! ]                                          // claimed csv file is a grid
+//! ```
+//!
+//! The 3-tuple's third element is **always the layout** (it suits csv,
+//! where the file is the table); naming a spreadsheet sheet is always
+//! the 4-tuple, which names the layout explicitly too. Two db sources
+//! do not concatenate: arrays replace like any array.
+//!
+//! Rows map keys to values **positionally** (in `kv`: col 0 = key,
+//! col 1 = value, col 2 = format; in `db`: the type row types its
+//! column). The **format** of a cell is one of the ids below — the
+//! column/row is optional, and a missing or empty format means `auto`:
+//!
+//! | Cell format | Aliases | Cargo feature | Notes |
+//! | ----------- | ------- | ------------- | ----- |
+//! | `auto` *(or empty)* | — | — | guesses bool → date/time/dt → uuid → mac → ip → integer → float → string, using only compiled-in types; never widens past `i64`/`u64`; leading-zero numbers stay strings |
+//! | `i8` `i16` `i32` `i64` | `int`, `integer` = `i64` | — | signed integers |
+//! | `u8` `u16` `u32` `u64` | `uint` = `u64` | — | unsigned integers |
+//! | `i128` `u128` | — | — | explicit-only — `auto` never guesses them |
+//! | `f32` `f64` | `float`, `double`, `number` = `f64` | — | floats (`f32` rounds through f32 precision) |
+//! | `bool` | `boolean` | — | also accepts `t/f`, `yes/no`, `y/n`, `on/off`, `1/0` (case-insensitive); `auto` only accepts `true`/`false` |
+//! | `str` | `string`, `text` | — | the cell text as-is |
+//! | `dt` | `datetime` | `datetime` | `YYYY-MM-DD`, optional time part |
+//! | `date`, `time` | — | same-named | `YYYY-MM-DD` / `hh:mm:ss[.frac]` |
+//! | `ipv4`, `ipv6` | — | same-named | IP addresses |
+//! | `inet`, `cidr` | — | `inet`, `cidr` | PostgreSQL inet/cidr shapes (optional/required netmask) |
+//! | `macaddr`, `macaddr8` | — | same-named | the PostgreSQL MAC spellings |
+//! | `uuid` | — | `uuid` | hyphenated or bare 32-hex |
+//! | `json`, `jsonc` | — | same-named | a whole document in one cell, parsed by exactly that format's parser |
+//!
+//! An id whose feature is off is an unknown format and fails the row;
+//! only `auto` degrades (it just stops guessing). The `numeric` feature
+//! extends every numeric cell with `0x`/`0o`/`0b` radixes, `_`
+//! separators and BigInt-style `123n`.
 //!
 //! The built-in `csv` format is headerless and positional; a header row,
 //! renamed/reordered columns or a transposed layout are a [`CustomFormat`]
@@ -214,7 +288,7 @@
 //!         .filter(|l| !l.trim().is_empty())
 //!         .map(|l| l.split_whitespace().map(str::to_owned).collect())
 //!         .collect();
-//!     c4::parse_table(rows, path, options)
+//!     c4::parse_table(rows, &c4::TableLayout::Kv, path, options)
 //! });
 //! let value: c4::Value = Loader::new(Options {
 //!         sources: vec![(table, "name c4 str\nport 8080 u16\ndebug true bool").into()],
@@ -227,6 +301,40 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # Spreadsheet formats
+//!
+//! `excel` (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`) and `ods` (`.ods`)
+//! read workbooks as table formats: each sheet is the same positional
+//! `key,value[,format]` table as csv, anchored at cell A1 (column A =
+//! key, B = value, C = optional type id; error messages carry real
+//! spreadsheet row numbers). Numbers, booleans and date-formatted cells
+//! convert to the text the table stage expects, so a `dt`/`date`/`time`
+//! format column works on real spreadsheet dates.
+//!
+//! Sheets parse as **db record grids by default**
+//! ([`Format::default_layout`]) — name a layout in a table source or a
+//! `formats` entry for anything else. Which sheets are read:
+//!
+//! - `tree: false` (default): exactly the sheet named `config`; every
+//!   other sheet is ignored, and a workbook without a `config` sheet
+//!   contributes nothing — so extra sheets are free working space.
+//! - `tree: true`: every sheet becomes a key under the file's key —
+//!   `a/b.xlsx` with sheets `c`, `d` loads as `{a: {b: {c: …, d: …}}}`.
+//! - Sheets whose name starts with `#`, `.` or `_` are skipped
+//!   ([`Options::ignore_sheet_prefix`]), and so are sheets hidden in the
+//!   workbook ([`Options::ignore_hidden_sheets`]) — both default `true`,
+//!   giving planners draft/scratch space next to live config.
+//!
+//! - A **table source that names a sheet** —
+//!   `(Format::Excel, "game.xlsx", "items", "db").into()` — reads exactly
+//!   that sheet (even a prefixed/hidden one; a missing sheet is an
+//!   error) and merges it **under the sheet name as key**, so several
+//!   sources can each give one sheet of the same workbook its own
+//!   layout. The `xlsx-sheets` example composes five sheets this way.
+//!
+//! Both are binary formats, so they load from files only — a
+//! `(Format::Excel, text)` string source is an error.
 //!
 //! # Custom formats
 //!
@@ -249,9 +357,13 @@
     feature = "toml",
     feature = "ini",
     feature = "env",
-    feature = "csv"
+    feature = "csv",
+    feature = "excel",
+    feature = "ods"
 )))]
-compile_error!("c4: enable at least one format feature (json, jsonc, yaml, toml, ini, env, csv)");
+compile_error!(
+    "c4: enable at least one format feature (json, jsonc, yaml, toml, ini, env, csv, excel, ods)"
+);
 
 mod de;
 mod error;
@@ -266,7 +378,9 @@ mod value;
 
 pub use error::{Error, Result};
 pub use loader::Loader;
-pub use options::{CustomFormat, Format, FormatKind, FormatSpec, Options, Order};
+pub use options::{
+    CustomFormat, CustomLayout, Format, FormatKind, FormatSpec, Options, Order, TableLayout,
+};
 pub use source::Source;
 pub use trace::{SourceRef, TracedValue};
 pub use value::Value;
@@ -302,11 +416,19 @@ pub fn load<T: DeserializeOwned>(path: impl Into<PathBuf>) -> Result<T> {
     .load()
 }
 
-/// The generic table stage: interpret a plain row table
-/// (`[[key, value, format], …]`) with the `options.table` semantics — the
-/// same stage the csv format feeds. Public so custom table-shaped formats
-/// (spreadsheets, markdown tables, …) can lower their file into rows and
-/// reuse it; `path` labels errors.
-pub fn parse_table(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
-    format::table::parse(rows, path, options)
+/// The generic table stage: interpret a plain row table under an
+/// explicit [`TableLayout`] — `&TableLayout::Kv` for
+/// `key,value[,format]` rows (what the csv format feeds by default),
+/// `&TableLayout::Db` for a record grid, or a [`CustomLayout`] callback.
+/// Public so custom table-shaped formats (markdown tables, …) and custom
+/// layouts can lower their input into rows and reuse it; `path` labels
+/// errors. The layout is always passed — there is deliberately no
+/// defaulting variant.
+pub fn parse_table(
+    rows: Vec<Vec<String>>,
+    layout: &TableLayout,
+    path: &Path,
+    options: &Options,
+) -> Result<Value> {
+    format::table::parse(rows, layout, path, options)
 }

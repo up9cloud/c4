@@ -1,0 +1,4 @@
+{
+  "max_players": { "$id": "Leaf", "value": 8, "source": "tests/fixtures/excel_kv_formats/config/app.xlsx", "format": "u64" },
+  "title": { "$id": "Leaf", "value": "Hello", "source": "tests/fixtures/excel_kv_formats/config/app.xlsx", "format": "str" }
+}

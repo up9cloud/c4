@@ -1,0 +1,6 @@
+{
+  "$id": "Leaf",
+  "value": [{ "x": 1 }],
+  "source": "tests/fixtures/excel_hidden_config_off/config/app.xlsx",
+  "format": "arr"
+}

@@ -5,13 +5,44 @@
 ![Downloads](https://img.shields.io/crates/d/c4-config.svg)
 
 Load config from folders, files and in-code strings/values into one
-deep-merged value. Formats are individually selectable via Cargo
-features, with a table (CSV) format whose cells carry typed values,
+deep-merged value. File formats are individually selectable via Cargo
+features (default: just JSONC), with table formats (CSV and
+Excel/OpenDocument spreadsheets) whose cells carry typed values,
 per-value provenance tracing, and a CLI.
 
 ```sh
 cargo add c4-config    # the package is c4-config; in code it is `c4`
 ```
+
+## Why c4
+
+Honestly: in the AI era you may not need a config library at all. If
+your app reads one simple settings file, ask your AI assistant to
+write bespoke loading code instead — **zero dependencies** is lighter
+than any library, including this one. Don't add c4 for that.
+
+What still deserves a library is a **convention**. node-config's real
+contribution was never convenience — it was a rule set a whole team
+could point at: multiple files, deterministic override order, deep
+merge. c4 exists to be that rule set for Rust:
+
+- **Deterministic merging you don't re-invent per project** — later
+  sources override earlier, filenames decide order inside a folder,
+  objects merge deep, arrays and scalars replace. One sentence,
+  always true.
+- **Table conventions non-programmers can own** — `key,value[,format]`
+  rows for settings (the CSV default), or a `db` record grid (keys /
+  types / rows → an array of typed objects; the spreadsheet default)
+  for data tables, the same whether they live
+  in a CSV file or an Excel/OpenDocument sheet. Planners — game
+  designers especially — edit config in the spreadsheet tools they
+  already use, with typed cells (integers, bools, dates, IPs, UUIDs, …)
+  instead of stringly data, and no programmer in the loop.
+- **Escape hatches that are documented, not discovered** — when the
+  convention doesn't fit (header rows, transposed grids, a homegrown
+  format), a `CustomFormat` or `CustomLayout` is a few lines reusing
+  the same table stage. Every hatch ships as a runnable example under
+  [`examples/`](examples/).
 
 **Project goals — ease of use first:**
 
@@ -27,11 +58,12 @@ cargo add c4-config    # the package is c4-config; in code it is `c4`
 ## Usage
 
 One call, one path — a folder whose files deep-merge, or a single file
-(default formats: jsonc + yaml):
+(the default build reads jsonc; every other format — yaml, toml, ini,
+env, csv, excel, ods, strict json — is one Cargo feature away):
 
 ```rust
 let value: c4::Value = c4::load("config")?;   // a folder …
-let one: c4::Value = c4::load("app.yml")?;    // … or a single file
+let one: c4::Value = c4::load("app.json")?;   // … or a single file
 
 // dynamic access: index into objects/arrays — a missing key yields
 // Value::Null instead of panicking — and convert with the as_* accessors
@@ -104,9 +136,14 @@ cd examples/readme-simple && cargo run
 ```
 
 The `readme-simple` / `readme-advanced` crates walk through basic and
-multi-source usage, and `examples/watch` shows DIY hot-reload — watching
-the config folder with the `notify` crate and re-running `load()` on
-changes; c4 itself stays a synchronous loader on purpose. Beyond that,
+multi-source usage; `csv-db` loads a CSV record grid (the `db` layout)
+straight into a `Vec<Item>`; `xlsx-sheets` reads one Excel workbook
+whose sheets each use a different table layout (settings, record
+grids, custom layouts); `csv-header` / `csv-transpose` are the CSV
+reshaping hatches; and `examples/hot-reload` shows DIY hot-reload —
+watching the config folder with the `notify` crate and re-running
+`load()` on changes; c4 itself stays a synchronous loader on purpose.
+Beyond that,
 every behavior has a fixture under [`tests/fixtures/`](tests/fixtures/):
 `config/` is the input, `expect.json` the merged result, and
 `expect.debug.json` the traced form — if something is not covered in

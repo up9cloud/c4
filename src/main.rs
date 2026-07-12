@@ -33,6 +33,10 @@ Options (mirror Options; each boolean also has a --no-<name> form):
   --tree                tree mode: folders/files become keys (default off)
   --auto-files          tree: auto-detect extension-less files (default on)
   --ignore-unknown-ext  tree: skip unknown-extension files (default on)
+  --ignore-sheet-prefix
+                        spreadsheets: skip sheets named #*/.*/_* (default on)
+  --ignore-hidden-sheets
+                        spreadsheets: skip hidden sheets (default on)
   -h, --help            show this help
 
 Examples:
@@ -48,6 +52,10 @@ Examples:
 Notes:
   csv is positional key,value[,format]; for a header row or renamed/
   reordered columns, use a CustomFormat (see the csv-header example).
+  Spreadsheets (xlsx/xlsm/xlsb/xls/ods) parse each sheet as a db record
+  grid (keys row, types row, data rows); the sheet named 'config' is
+  read (with --tree, every sheet becomes a key). They are input-only
+  formats (-f excel is not valid output).
 ";
 
 /// Output serializer. Jsonc collapses into Json; env and ini share the
@@ -141,6 +149,10 @@ fn run() -> Result<(), String> {
             "--no-auto-files" => opts.auto_files = false,
             "--ignore-unknown-ext" => opts.ignore_unknown_ext = true,
             "--no-ignore-unknown-ext" => opts.ignore_unknown_ext = false,
+            "--ignore-sheet-prefix" => opts.ignore_sheet_prefix = true,
+            "--no-ignore-sheet-prefix" => opts.ignore_sheet_prefix = false,
+            "--ignore-hidden-sheets" => opts.ignore_hidden_sheets = true,
+            "--no-ignore-hidden-sheets" => opts.ignore_hidden_sheets = false,
             "-h" | "--help" => {
                 print!("{USAGE}");
                 return Ok(());

@@ -1,0 +1,9 @@
+{
+  "$id": "Leaf",
+  "value": [
+    { "hp": 10, "name": "slime" },
+    { "hp": 12, "name": "bat" }
+  ],
+  "source": "tests/fixtures/csv_db_no_types/config/data.csv",
+  "format": "arr"
+}

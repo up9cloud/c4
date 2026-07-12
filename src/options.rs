@@ -20,11 +20,17 @@ pub enum Format {
     Ini,
     Env,
     Csv,
+    /// Excel workbooks (`xlsx`/`xlsm`/`xlsb`/`xls`) — a binary
+    /// table-shaped format; file sources only. Feature `excel`.
+    Excel,
+    /// OpenDocument spreadsheets (`ods`) — a binary table-shaped format;
+    /// file sources only. Feature `ods`.
+    Ods,
 }
 
 impl Format {
     /// Look a format up by its string id (`"json"`, `"jsonc"`, `"yaml"`,
-    /// `"toml"`, `"ini"`, `"env"`, `"csv"`).
+    /// `"toml"`, `"ini"`, `"env"`, `"csv"`, `"excel"`, `"ods"`).
     pub fn from_id(id: &str) -> Option<Format> {
         Some(match id {
             "json" => Format::Json,
@@ -34,6 +40,8 @@ impl Format {
             "ini" => Format::Ini,
             "env" => Format::Env,
             "csv" => Format::Csv,
+            "excel" => Format::Excel,
+            "ods" => Format::Ods,
             _ => return None,
         })
     }
@@ -48,6 +56,8 @@ impl Format {
             Format::Ini => "ini",
             Format::Env => "env",
             Format::Csv => "csv",
+            Format::Excel => "excel",
+            Format::Ods => "ods",
         }
     }
 
@@ -65,6 +75,19 @@ impl Format {
             Format::Ini => &["ini"],
             Format::Env => &["env"],
             Format::Csv => &["csv"],
+            Format::Excel => &["xlsx", "xlsm", "xlsb", "xls"],
+            Format::Ods => &["ods"],
+        }
+    }
+
+    /// The default [`TableLayout`] of this format: `db` for the
+    /// spreadsheet formats (excel/ods — a sheet is a record grid unless
+    /// told otherwise), `kv` for csv (and, vacuously, for the non-table
+    /// formats, which never consult a layout).
+    pub fn default_layout(self) -> TableLayout {
+        match self {
+            Format::Excel | Format::Ods => TableLayout::Db,
+            _ => TableLayout::Kv,
         }
     }
 
@@ -77,6 +100,7 @@ impl Format {
         FormatSpec {
             format: FormatKind::Builtin(self),
             extensions: extensions.into_iter().map(Into::into).collect(),
+            layout: self.default_layout(),
         }
     }
 }
@@ -95,6 +119,14 @@ pub enum FormatKind {
 /// - `Format::Yaml` or `"yaml"` — default extensions
 /// - `(Format::Yaml, ["yml", "conf"])` or `("yaml", ["yml", "conf"])` —
 ///   custom extensions
+/// - `(Format::Csv, ["csv"], "db")` — custom extensions **plus a
+///   [`TableLayout`]** (a layout id string, a `TableLayout`, or a
+///   [`CustomLayout`]): every file this entry claims parses under that
+///   layout, in merge mode, tree mode and single-file path sources
+///   alike. Table sources override it; string sources stay `Kv`; a
+///   layout on a non-table format panics at conversion. Without this
+///   form an entry uses the format's default layout
+///   ([`Format::default_layout`]).
 /// - a [`CustomFormat`] — user-defined parser with the extensions it was
 ///   built with
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +134,8 @@ pub struct FormatSpec {
     pub(crate) format: FormatKind,
     /// Extensions without the leading dot.
     pub(crate) extensions: Vec<String>,
+    /// The table layout for files this entry claims (table formats only).
+    pub(crate) layout: TableLayout,
 }
 
 impl From<Format> for FormatSpec {
@@ -138,6 +172,7 @@ impl From<CustomFormat> for FormatSpec {
         Self {
             extensions: custom.extensions.clone(),
             format: FormatKind::Custom(custom),
+            layout: TableLayout::Kv,
         }
     }
 }
@@ -163,6 +198,32 @@ impl<const N: usize> From<(&str, [&str; N])> for FormatSpec {
         Format::from_id(id)
             .unwrap_or_else(|| panic!("unknown format id: {id:?}"))
             .exts(extensions)
+    }
+}
+
+/// In a `formats` entry the third element is always a **layout** (a
+/// string must be a valid layout id — extensions have no sheet meaning).
+/// Panics on unknown ids, and on a layout for a non-table format
+/// (`(Format::Yaml, ["yml"], "db")`) — this is config-time code.
+impl<const N: usize, L: Into<TableLayout>> From<(Format, [&str; N], L)> for FormatSpec {
+    fn from((format, extensions, layout): (Format, [&str; N], L)) -> Self {
+        assert!(
+            matches!(format, Format::Csv | Format::Excel | Format::Ods),
+            "'{}' is not a table format (csv, excel, ods) — table layouts do not apply",
+            format.id()
+        );
+        FormatSpec {
+            layout: layout.into(),
+            ..format.exts(extensions)
+        }
+    }
+}
+
+/// Panics on an unknown format or layout id — this is config-time code.
+impl<const N: usize, L: Into<TableLayout>> From<(&str, [&str; N], L)> for FormatSpec {
+    fn from((id, extensions, layout): (&str, [&str; N], L)) -> Self {
+        let format = Format::from_id(id).unwrap_or_else(|| panic!("unknown format id: {id:?}"));
+        (format, extensions, layout).into()
     }
 }
 
@@ -212,6 +273,119 @@ impl From<&str> for Order {
     }
 }
 
+/// How the table stage interprets a row grid. Chosen per table source
+/// (`(format, path, layout)` / `(format, path, sheet, layout)` tuples),
+/// per `formats` entry (`(format, [exts], layout)`), or passed
+/// explicitly to [`parse_table`](crate::parse_table); everything else
+/// uses the format's default —
+/// [`Format::default_layout`](crate::Format::default_layout): `kv` for
+/// csv, `db` for excel/ods. Converts from a layout id string
+/// (`"kv"`/`"kvf"`, `"db"`) or a [`CustomLayout`].
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum TableLayout {
+    /// `key,value[,format]` positional rows — one config entry per row.
+    /// The default for csv.
+    #[default]
+    Kv,
+    /// A database-style grid: the first (non-blank) row holds the keys,
+    /// the second **always** the type ids (an empty cell = `auto`), every
+    /// following row is one record. Parses to an **array** of one object
+    /// per record: `[[a,b],[i8,str],[4,x],[5,y]]` →
+    /// `[{a:4,b:"x"},{a:5,b:"y"}]`. Empty cells are omitted from their
+    /// record (sparse tables give sparse objects). The default for the
+    /// spreadsheet formats (excel/ods). A grid *without* a
+    /// type row is a [`CustomLayout`] that inserts a row of `auto` cells
+    /// after the header and delegates back to `Db` (see the
+    /// `xlsx-sheets` example).
+    Db,
+    /// A user callback over the raw rows — see [`CustomLayout`].
+    Custom(CustomLayout),
+}
+
+impl TableLayout {
+    /// Look a layout up by its string id: `kv` (alias `kvf`) or `db`.
+    pub fn from_id(id: &str) -> Option<TableLayout> {
+        Some(match id.to_lowercase().as_str() {
+            "kv" | "kvf" => TableLayout::Kv,
+            "db" => TableLayout::Db,
+            _ => return None,
+        })
+    }
+
+    /// The string id of this layout (a custom layout reports its own id).
+    pub fn id(&self) -> &str {
+        match self {
+            TableLayout::Kv => "kv",
+            TableLayout::Db => "db",
+            TableLayout::Custom(custom) => &custom.id,
+        }
+    }
+}
+
+impl From<&str> for TableLayout {
+    /// Panics on an unknown id — this is config-time code. See
+    /// [`TableLayout::from_id`] for the accepted spellings.
+    fn from(id: &str) -> Self {
+        TableLayout::from_id(id).unwrap_or_else(|| {
+            panic!("unknown table layout id: {id:?} (valid: kv, db, or a CustomLayout)")
+        })
+    }
+}
+
+impl From<CustomLayout> for TableLayout {
+    fn from(custom: CustomLayout) -> Self {
+        TableLayout::Custom(custom)
+    }
+}
+
+/// The parser callback of a [`CustomLayout`]: `(rows, path, options)`.
+pub(crate) type CustomRowsParser =
+    std::sync::Arc<dyn Fn(Vec<Vec<String>>, &Path, &Options) -> Result<Value> + Send + Sync>;
+
+/// A user-defined table layout: an id and a callback that receives the
+/// lowered rows (`Vec<Vec<String>>` — csv records, or a sheet's cells as
+/// text) and returns any [`Value`]. This is the rows-level escape hatch:
+/// binary formats (spreadsheets) can't go through a [`CustomFormat`]
+/// (which parses text), but one sheet of a workbook can still get fully
+/// custom treatment via
+/// `(Format::Excel, path, sheet, CustomLayout::new(…)).into()`. Most
+/// custom layouts end by reshaping the rows and calling
+/// [`parse_table`](crate::parse_table) (the `xlsx-sheets` example
+/// transposes a column-oriented sheet this way).
+#[derive(Clone)]
+pub struct CustomLayout {
+    pub(crate) id: String,
+    /// `(rows, path, options)` — `path` labels errors. Crate-private:
+    /// build custom layouts through [`CustomLayout::new`].
+    pub(crate) parser: CustomRowsParser,
+}
+
+impl CustomLayout {
+    pub fn new<F>(id: impl Into<String>, parser: F) -> Self
+    where
+        F: Fn(Vec<Vec<String>>, &Path, &Options) -> Result<Value> + Send + Sync + 'static,
+    {
+        Self {
+            id: id.into(),
+            parser: std::sync::Arc::new(parser),
+        }
+    }
+}
+
+impl std::fmt::Debug for CustomLayout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CustomLayout")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for CustomLayout {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && std::sync::Arc::ptr_eq(&self.parser, &other.parser)
+    }
+}
+
 /// The parser callback of a [`CustomFormat`]: `(text, path, options)`.
 pub(crate) type CustomParser =
     std::sync::Arc<dyn Fn(&str, &Path, &Options) -> Result<Value> + Send + Sync>;
@@ -247,7 +421,7 @@ pub(crate) type CustomParser =
 ///                 .collect()
 ///         })
 ///         .collect();
-///     c4::parse_table(rows, path, options)
+///     c4::parse_table(rows, &c4::TableLayout::Kv, path, options)
 /// });
 ///
 /// // to read `.md` files instead, push `md` into Options.formats —
@@ -327,42 +501,61 @@ pub struct Options {
     /// files is decided by filename alone; see the merge rules in
     /// README.md.
     pub formats: Vec<FormatSpec>,
-    /// Scan subdirectories. Default `false`.
+    /// **Merge mode only** (`tree: false`); folder sources. Scan
+    /// subdirectories too. Default `false`.
     pub recursive: bool,
-    /// When recursive, ignore subfolder paths instead of turning them
-    /// into nested keys. Default `true` — merge mode flattens; nesting
-    /// by folder structure is tree mode's job (or set `flat: false`).
+    /// **Merge mode only**, and only meaningful with
+    /// `recursive: true`. `true` (default): subfolder files merge as if
+    /// they sat at the top level — folder names carry no meaning.
+    /// `false`: each subfolder becomes a key and its files merge under
+    /// it. (The *filename* never becomes a key in merge mode; for
+    /// folder-and-filename keys use tree mode.)
     pub flat: bool,
-    /// Treat dotted env/table keys as nested paths: `a.b.c` becomes
-    /// `{ "a": { "b": { "c": … } } }`. Default `true`.
+    /// **All modes; env and table formats.** Treat dotted keys as nested
+    /// paths: `a.b.c` becomes `{ "a": { "b": { "c": … } } }`.
+    /// Default `true`.
     pub dot_key: bool,
-    /// Case-sensitive key merging. Default `true`; when `false`, keys are
-    /// normalized to lowercase. (File-extension matching is always
-    /// case-insensitive and unrelated to this option.)
+    /// **All modes.** Case-sensitive key merging. Default `true`; when
+    /// `false`, keys are normalized to lowercase. (File-extension
+    /// matching is always case-insensitive and unrelated to this
+    /// option.)
     pub case_sensitive: bool,
-    /// Load order inside a folder — in merge mode and in tree mode
-    /// (where it decides key collisions like `a.yml` vs a folder `a/`).
+    /// **All modes**; folder sources. Load order inside a folder. In
+    /// merge mode it decides which file overrides which; in tree mode it
+    /// decides key collisions (`a.yml` vs a folder `a/`).
     pub order: Order,
-    /// Tree mode (requires the `tree` feature): instead of merging a
-    /// folder's files into one value, every subfolder becomes a key and
-    /// every file becomes a key named after the file (extension
-    /// stripped), holding that file's parsed content. `a/b.json = {c:1}`
-    /// and `d.json = {a:123}` load as `{a: {b: {c: 1}}, d: {a: 123}}`.
-    /// `recursive`, `flat` and `order` only apply when this is `false`.
-    /// Default `false`.
+    /// **Mode switch** (requires the `tree` feature). `false` (default):
+    /// merge mode — a folder's files deep-merge into one value. `true`:
+    /// tree mode — the folder's *shape* becomes the value: every
+    /// subfolder is a key, and every file is a key named after the file
+    /// (extension stripped) holding that file's parsed content —
+    /// `a/b.json = {c:1}` and `d.json = {a:123}` load as
+    /// `{a: {b: {c: 1}}, d: {a: 123}}`. Tree mode is always recursive;
+    /// `recursive` and `flat` do not apply to it.
     pub tree: bool,
-    /// Tree mode: parse files *without* an extension by running the
-    /// table `auto` detection over the (trimmed) file content — the same
-    /// feature-gated guesses, so `a/blabla` containing `1.1.1.1` becomes
-    /// an IPv4 value when the `ipv4` feature is on, a string otherwise.
-    /// When `false`, extension-less files fall under
-    /// `ignore_unknown_ext`. (Named `auto_files` to keep it apart from
-    /// the table `auto` format id it reuses.) Default `true`.
+    /// **Tree mode only.** What to do with a file that has *no*
+    /// extension. `true` (default): read it and guess the type of its
+    /// (trimmed) content with the table `auto` rules — a file containing
+    /// `1.1.1.1` becomes an IPv4 value when the `ipv4` feature is on, a
+    /// string otherwise. `false`: treat it like a file with an unknown
+    /// extension (see [`ignore_unknown_ext`](Options::ignore_unknown_ext)).
+    /// (Named `auto_files` after the table `auto` type id it reuses.)
     pub auto_files: bool,
-    /// Tree mode: skip files whose extension no active format claims
-    /// (`true`), or error on them (`false`). Default `true`. (In merge
-    /// mode unclaimed files are always skipped.)
+    /// **Tree mode only.** What to do with a file whose extension no
+    /// active format claims: skip it (`true`, default) or fail the load
+    /// with `Error::Parse` (`false`). Merge mode always skips such
+    /// files.
     pub ignore_unknown_ext: bool,
+    /// **Spreadsheet formats (excel/ods) only.** Skip sheets whose name
+    /// starts with `#`, `.` or `_` — draft/scratch space next to live
+    /// config. Default `true`. (A table source that names a sheet
+    /// explicitly bypasses this filter.)
+    pub ignore_sheet_prefix: bool,
+    /// **Spreadsheet formats (excel/ods) only.** Skip sheets marked
+    /// hidden in the workbook (Excel `hidden`/`veryHidden`, OpenDocument
+    /// `table:display="false"`). Default `true`. (A table source that
+    /// names a sheet explicitly bypasses this filter.)
+    pub ignore_hidden_sheets: bool,
 }
 
 impl Default for Options {
@@ -378,6 +571,8 @@ impl Default for Options {
             tree: false,
             auto_files: true,
             ignore_unknown_ext: true,
+            ignore_sheet_prefix: true,
+            ignore_hidden_sheets: true,
         }
     }
 }
@@ -402,5 +597,9 @@ fn enabled_formats() -> Vec<FormatSpec> {
     formats.push(Format::Env.into());
     #[cfg(feature = "csv")]
     formats.push(Format::Csv.into());
+    #[cfg(feature = "excel")]
+    formats.push(Format::Excel.into());
+    #[cfg(feature = "ods")]
+    formats.push(Format::Ods.into());
     formats
 }

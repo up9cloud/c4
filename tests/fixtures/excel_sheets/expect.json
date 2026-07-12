@@ -1,0 +1,13 @@
+{
+  "_extra": { "note": "hi" },
+  "config": { "max_players": 8, "title": "Hello" },
+  "items": [
+    { "id": 1, "name": "sword", "price": 10.5 },
+    { "id": 2, "name": "shield", "price": 7.0 }
+  ],
+  "meta": { "author": "up9cloud", "version": 2 },
+  "npcs": [
+    { "hp": 10, "name": "slime" },
+    { "hp": 12, "name": "bat" }
+  ]
+}

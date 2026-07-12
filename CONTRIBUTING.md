@@ -16,6 +16,13 @@
   shared things `Table*`, not `Csv*`.
 - **Provenance is a debug aid.** `trace()` labels carry no config
   semantics.
+- **No dot-path getter.** `value["a"]["b"]["c"]` is already safe —
+  missing keys chain as `Null` instead of panicking — so it fully
+  covers the need, and a `.get("a.b.c")` API would just be a second way
+  to do the same thing. node-config's `config.get('a.b.c')` only exists
+  because of JS history: `config.a.b.c` used to throw on an undefined
+  intermediate and `config?.a?.b?.c` didn't exist yet; Rust's `Index`
+  gives us the safe form natively.
 
 CLAUDE.md holds the complete, rigorous spec — read it before changing
 behavior. README.md is the user-facing overview; keep it simple.
@@ -33,6 +40,11 @@ behavior. README.md is the user-facing overview; keep it simple.
   (the input), `expect.json` (the plain merged result) and
   `expect.debug.json` (the serialized trace: `$id`-tagged leaves with
   value + source + format). Error cases have `config/` only.
+- Binary spreadsheet fixtures (`.xlsx`/`.ods`) are never hand-edited:
+  `cargo run --manifest-path tools/gen-sheets/Cargo.toml` (a
+  zero-dependency Rust tool) regenerates them all — plus the
+  `xlsx-sheets` example workbook — byte-deterministically; CI checks
+  the binaries match the generator.
 - Option variants get their own case folder with copied config files —
   never share one config between variant expectations.
 - CLI cases: `tests/cli/<case>/` with `args.txt` and one `result.*`

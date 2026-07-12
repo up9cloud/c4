@@ -9,8 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::Value;
-use crate::options::FormatKind;
+use crate::options::{FormatKind, TableLayout};
+use crate::{Format, Value};
 
 /// One config source. Sources merge in order — later overrides earlier.
 ///
@@ -24,9 +24,15 @@ use crate::options::FormatKind;
 /// - a **1-tuple** `(value,)` wraps any `Serialize` type as a typed
 ///   override — the single-element tuple keeps it distinct from the
 ///   conversions above (a blanket `From<impl Serialize>` would overlap
-///   them, since `&str`/`String`/tuples are all `Serialize`).
+///   them, since `&str`/`String`/tuples are all `Serialize`);
+/// - a 3-tuple `(format, path, layout)` or 4-tuple
+///   `(format, path, sheet, layout)` becomes [`Source::Table`] — one
+///   **file** of a table format (csv, excel, ods) read with the given
+///   [`TableLayout`]. The 3-tuple's third element is always the layout
+///   (it suits csv — the file is the table); naming a spreadsheet sheet
+///   is always the 4-tuple.
 ///
-/// So one `Options.sources` `vec![…]` can mix all three kinds.
+/// So one `Options.sources` `vec![…]` can mix all of these kinds.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Source {
     /// A filesystem path — a folder whose files deep-merge, or a single
@@ -41,6 +47,22 @@ pub enum Source {
     /// converted to a [`Value`], or the serialization error to report at
     /// load time.
     Value(std::result::Result<Value, String>),
+    /// One **file** of a table format (csv, excel, ods) read with an
+    /// explicit [`TableLayout`] (from a `(format, path, layout)` /
+    /// `(format, path, sheet, layout)` tuple). A non-file path and a
+    /// non-table format are [`Error::Parse`](crate::Error::Parse) (the
+    /// path error hints that in-code text belongs in a string source). `sheet` (spreadsheets only;
+    /// naming one on csv is an error) reads exactly that sheet —
+    /// bypassing the `ignore_sheet_prefix` / `ignore_hidden_sheets`
+    /// filters, erroring when it is missing — and merges its value
+    /// **under the sheet name as key**, so several sources can read
+    /// different sheets of one workbook without clobbering each other.
+    Table {
+        path: PathBuf,
+        format: Format,
+        sheet: Option<String>,
+        layout: TableLayout,
+    },
 }
 
 impl From<&str> for Source {
@@ -118,5 +140,66 @@ impl<T: serde::Serialize> From<(T,)> for Source {
                 .serialize(crate::ser::ValueSerializer)
                 .map_err(|e| e.to_string()),
         )
+    }
+}
+
+/// A `(format, path, layout)` 3-tuple is a table source: one file, read
+/// with that [`TableLayout`] (a `TableLayout`, a
+/// [`CustomLayout`](crate::CustomLayout), or a layout-id `&str` —
+/// `"kv"`/`"kvf"`, `"db"`; an unknown id **panics**, this is config-time
+/// code). The third element is **always the layout** — the 3-tuple suits
+/// csv, where the file is the table. To name a spreadsheet sheet use the
+/// 4-tuple, which names the layout explicitly too.
+impl<P: Into<PathBuf>, L: Into<TableLayout>> From<(Format, P, L)> for Source {
+    fn from((format, path, layout): (Format, P, L)) -> Self {
+        Source::Table {
+            path: path.into(),
+            format,
+            sheet: None,
+            layout: layout.into(),
+        }
+    }
+}
+
+/// Like the `(Format, path, layout)` tuple, with the format named by its
+/// id string. Panics on an unknown format id — this is config-time code.
+impl<P: Into<PathBuf>, L: Into<TableLayout>> From<(&str, P, L)> for Source {
+    fn from((id, path, layout): (&str, P, L)) -> Self {
+        let format = Format::from_id(id).unwrap_or_else(|| panic!("unknown format id: {id:?}"));
+        (format, path, layout).into()
+    }
+}
+
+/// A `(format, path, sheet, layout)` 4-tuple is a table source that reads
+/// exactly one sheet of a workbook (skipping the sheet-ignore filters)
+/// and merges it under the sheet name as key.
+impl<P, S, L> From<(Format, P, S, L)> for Source
+where
+    P: Into<PathBuf>,
+    S: Into<String>,
+    L: Into<TableLayout>,
+{
+    fn from((format, path, sheet, layout): (Format, P, S, L)) -> Self {
+        Source::Table {
+            path: path.into(),
+            format,
+            sheet: Some(sheet.into()),
+            layout: layout.into(),
+        }
+    }
+}
+
+/// Like the `(Format, path, sheet, layout)` tuple, with the format named
+/// by its id string. Panics on an unknown format id — this is config-time
+/// code.
+impl<P, S, L> From<(&str, P, S, L)> for Source
+where
+    P: Into<PathBuf>,
+    S: Into<String>,
+    L: Into<TableLayout>,
+{
+    fn from((id, path, sheet, layout): (&str, P, S, L)) -> Self {
+        let format = Format::from_id(id).unwrap_or_else(|| panic!("unknown format id: {id:?}"));
+        (format, path, sheet, layout).into()
     }
 }

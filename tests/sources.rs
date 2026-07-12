@@ -152,3 +152,81 @@ fn value_source_serde_shapes() {
         loader(vec![(std::collections::BTreeMap::from([(1, 2)]),).into()]).load::<c4::Value>();
     assert!(matches!(res, Err(c4::Error::Parse { .. })));
 }
+
+#[test]
+fn table_layout_converts_from_id() {
+    use c4::TableLayout;
+    assert_eq!(TableLayout::from("kv"), TableLayout::Kv);
+    assert_eq!(TableLayout::from("kvf"), TableLayout::Kv);
+    assert_eq!(TableLayout::from("db"), TableLayout::Db);
+    assert_eq!(TableLayout::from_id("db_auto"), None); // removed on purpose
+    assert_eq!(TableLayout::default(), TableLayout::Kv);
+}
+
+#[test]
+fn table_source_requires_a_table_format() {
+    // toml is not a table format — the error is format-independent
+    let err = loader(vec![
+        (
+            c4::Format::Toml,
+            "tests/fixtures/simple/config/app.json",
+            "db",
+        )
+            .into(),
+    ])
+    .load::<c4::Value>()
+    .unwrap_err();
+    assert!(matches!(err, c4::Error::Parse { .. }));
+}
+
+#[test]
+fn table_source_must_be_a_file() {
+    // a folder (or csv text passed as the path) is Error::Parse with a
+    // hint, not NotFound — the common mistake is passing in-code text
+    let err = loader(vec![
+        (c4::Format::Csv, "tests/fixtures/simple/config", "db").into(),
+    ])
+    .load::<c4::Value>()
+    .unwrap_err();
+    let c4::Error::Parse { message, .. } = err else {
+        panic!("expected Parse, got {err:?}");
+    };
+    assert!(message.contains("string source"), "hint missing: {message}");
+}
+
+#[test]
+fn three_tuple_third_is_always_a_layout() {
+    // the 3-tuple never names a sheet — its third element is a layout
+    // id string or a TableLayout/CustomLayout value
+    let c4::Source::Table { sheet, layout, .. } =
+        c4::Source::from((c4::Format::Csv, "x.csv", "db"))
+    else {
+        panic!("expected a table source");
+    };
+    assert_eq!(sheet, None);
+    assert_eq!(layout, c4::TableLayout::Db);
+
+    let c4::Source::Table { sheet, layout, .. } =
+        c4::Source::from((c4::Format::Excel, "x.xlsx", c4::TableLayout::Kv))
+    else {
+        panic!("expected a table source");
+    };
+    assert_eq!(sheet, None);
+    assert_eq!(layout, c4::TableLayout::Kv);
+}
+
+#[test]
+#[should_panic(expected = "unknown table layout id")]
+fn three_tuple_with_a_sheet_name_panics() {
+    // sheets go in the 4-tuple; a non-layout string in the 3-tuple is a
+    // config-time mistake
+    let _: c4::Source = (c4::Format::Excel, "x.xlsx", "items").into();
+}
+
+#[test]
+#[should_panic(expected = "not a table format")]
+fn formats_layout_on_a_non_table_format_panics() {
+    // (yaml, ["yml"], "db") is a config-time mistake — panic, like
+    // unknown ids
+    let _: c4::FormatSpec = (c4::Format::Yaml, ["yml"], "db").into();
+}

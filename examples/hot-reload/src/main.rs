@@ -8,7 +8,7 @@
 //! reproducible. A real service would watch its actual config folder
 //! and loop forever.
 //!
-//! Run inside this folder: `cd examples/watch && cargo run`
+//! Run inside this folder: `cd examples/hot-reload && cargo run`
 //! (expected output: `output.log` next to this file)
 
 use std::fs;
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // a scratch copy so the demo can edit files freely
     let dir = std::env::temp_dir().join(format!("c4-watch-example-{}", std::process::id()));
     fs::create_dir_all(&dir)?;
-    fs::copy("config/app.yml", dir.join("app.yml"))?;
+    fs::copy("config/app.jsonc", dir.join("app.jsonc"))?;
 
     let loader = c4::Loader::new(c4::Options {
         sources: vec![dir.as_path().into()],
@@ -39,11 +39,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // scripted edits standing in for a human changing the config
     let edits = [
-        "port: 9090\ngreeting: hello\n",
-        "port: 9090\ngreeting: hi there\n",
+        "{ \"port\": 9090, \"greeting\": \"hello\" }\n",
+        "{ \"port\": 9090, \"greeting\": \"hi there\" }\n",
     ];
     for edit in edits {
-        fs::write(dir.join("app.yml"), edit)?;
+        fs::write(dir.join("app.jsonc"), edit)?;
         loop {
             // wait for a change (the event details don't matter — any
             // event is just a signal to reload; only a timeout is fatal)

@@ -5,9 +5,14 @@
 
 use std::path::Path;
 
-use crate::{Error, Options, Result, Value};
+use crate::{Error, Options, Result, TableLayout, Value};
 
-pub(crate) fn parse(text: &str, path: &Path, options: &Options) -> Result<Value> {
+pub(crate) fn parse(
+    text: &str,
+    layout: &TableLayout,
+    path: &Path,
+    options: &Options,
+) -> Result<Value> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
@@ -21,5 +26,5 @@ pub(crate) fn parse(text: &str, path: &Path, options: &Options) -> Result<Value>
         })?;
         rows.push(record.iter().map(str::to_owned).collect());
     }
-    super::table::parse(rows, path, options)
+    super::table::parse(rows, layout, path, options)
 }

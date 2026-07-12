@@ -1,0 +1,12 @@
+{
+  "$id": "Leaf",
+  "value": [
+    {
+      "created": "2024-05-06 07:08:09",
+      "day": "2024-05-06",
+      "start": "12:00:00"
+    }
+  ],
+  "source": "tests/fixtures/excel_datetime/config/app.xlsx",
+  "format": "arr"
+}

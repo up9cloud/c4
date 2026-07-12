@@ -6,19 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `c4` is a Rust library + CLI that loads config sources (folders, single
 files, in-code strings) and deep-merges them into one value. Formats
-(jsonc, yaml, json, toml, ini, env, csv) are individually feature-gated;
-`default = ["jsonc", "yaml"]`. Edition 2024,
+(jsonc, yaml, json, toml, ini, env, csv, excel, ods) are individually
+feature-gated; `default = ["jsonc"]` (kept deliberately light — one
+parser dependency). Edition 2024,
 `rust-version = 1.85` — keep the toolchain current (`rustup update
 stable`); cargo 1.81 cannot even parse the lockfile's edition-2024
 dependencies.
 
 **Division of documents (no duplication):** README.md is the landing
-page only — badges, purpose + install, the simplest `load` usage, the
+page only — badges, the "why c4" positioning statement (see the design
+principle below), purpose + install, the simplest `load` usage, the
 CLI, the examples index, and contributing — and it points at the crate
 docs for everything else. The **crate-level rustdoc** (`src/lib.rs`
 `//!`) is the full user reference: sources & options, Cargo features,
-formats, merge rules, tree mode, table formats, custom formats,
-provenance. Its examples are real doctests and must run under the whole
+file formats (so named to keep them apart from the table formats),
+merge rules, tree mode, table formats, custom formats, provenance. Its examples are real doctests and must run under the whole
 feature matrix, so runnable ones use only feature-agnostic pieces
 (custom formats via `parse_table`, 1-tuple value sources, always-on type
 ids); only filesystem-reading `load("config")` snippets are `no_run`.
@@ -30,11 +32,33 @@ tests second, implementation third.
 
 ## Design principles (from discussion with the owner)
 
+- **Positioning (the "why c4" statement, decided 2026-07-12):** in the
+  AI era, code that just reads a simple config file does not need a
+  library at all — generated bespoke loading logic is lighter than any
+  dependency. What a config *library* is still for is the **convention**:
+  like node-config, whose real contribution was not convenience but a
+  shared rule set (later-overrides-earlier, multi-file merge), c4's
+  value is a fixed set of rules teams can point at — deterministic
+  override order, deep merge, and above all the **table conventions**
+  for csv/excel/ods (`key,value[,format]` rows, and the db layout
+  below), which give planners (especially game designers) a
+  spreadsheet-native format they can own without touching code. The
+  escape-hatch examples (custom formats/layouts) are part of the pitch:
+  when the convention doesn't fit, customizing is a documented few-line
+  job, not a fork. README carries this statement; the crate docs open
+  with a condensed form. Wording note (owner, 2026-07-12): the pitch is
+  *"ask your AI for bespoke loading code with **zero dependencies**"* —
+  the point is no-library beats any library for trivial cases, not that
+  the generated code is short.
 - **Options are plain data, and they carry everything** — the sources
   too (`Options.sources`, default `["config"]` folder). One struct,
   public fields, no setter per option; new capabilities become new
   fields. `Loader` has exactly `new(options)`, `load` and `trace` —
-  there is no separate builder step.
+  there is no separate builder step. **Doc rule (owner, 2026-07-12):**
+  every option that only applies in a particular mode/format must say
+  so in the first words of its doc comment (`Tree mode only …`,
+  `Merge mode only …`, `Spreadsheet formats (excel/ods) only …`) —
+  scope first, behavior second.
 - **One generic `load<T>`**, no `load_as`: `Value` implements
   `Deserialize`, so the annotated target type decides between dynamic
   and typed access. One free function: `c4::load(path)` — the path is
@@ -45,6 +69,16 @@ tests second, implementation third.
   `get_index`, `is_null`, `as_bool/i64/u64/i128/u128/f64/str/array/object`
   (`as_str` also returns the text of the textual typed variants), and
   `format_id`.
+- **No dot-path getter (`.get("a.b.c")`) — decided 2026-07-12.** Safe
+  chained indexing (`value["a"]["b"]["c"]`, missing keys yield
+  `Value::Null` at every step) already covers the need completely, so a
+  string-path API would be a second way to do the same thing. The
+  node-config-style `config.get('a.b.c')` exists in JS for historical
+  reasons only: `config.a.b.c` used to throw on an undefined
+  intermediate and optional chaining (`config?.a?.b?.c`) did not exist
+  yet — Rust's `Index` impls give us the safe form natively, so there is
+  nothing to work around. (`dot_key` is unrelated: it is about dotted
+  keys in *input* formats, not about reading values.)
 - **Capability-gating features only, no option-flipping.** (`opt-*`
   features existed once and were removed: feature unification would let
   any dependency silently flip the app's defaults.) Format features add
@@ -56,8 +90,21 @@ tests second, implementation third.
   (this is also how extensions are reassigned across formats, e.g.
   `[yaml, (jsonc, ["yml"])]` makes jsonc read `.yml`). Override order
   between files is decided by filename alone. Entries convert from
-  `Format`, a string id (`"yaml"`), a `(format, [exts])` tuple, or a
-  `CustomFormat`.
+  `Format`, a string id (`"yaml"`), a `(format, [exts])` tuple, a
+  `(format, [exts], layout)` tuple, or a `CustomFormat`. The optional
+  **layout** (2026-07-12) is a `TableLayout`/`CustomLayout`/layout-id
+  string (a string must be a valid layout id here — there is no sheet
+  meaning in `formats`) and applies to **every file that entry claims**,
+  in merge mode, tree mode and single-file path sources alike — e.g.
+  `(Format::Csv, ["csv"], "db")` makes a whole folder of csv files parse
+  as record grids. Table sources override it (they never consult
+  `formats`); string sources stay `Kv`. A layout on a **non-table**
+  format (`(Format::Yaml, ["yml"], "db")`) **panics at conversion** —
+  config-time code, like unknown ids (owner request, 2026-07-12).
+  Default: **the format's default layout** — `kv` for csv, **`db` for
+  excel/ods** (`Format::default_layout`, decided 2026-07-12:
+  spreadsheets are grids, so sheets parse as record grids unless told
+  otherwise; csv keeps kv for settings files).
 - **Custom formats live in `Options.formats`**, not a separate option:
   `FormatSpec.format` is `FormatKind::Builtin(Format) |
   Custom(CustomFormat)`. A `CustomFormat` is an id + extensions +
@@ -104,10 +151,40 @@ tests second, implementation third.
   `value:<i>`). Null roots contribute nothing, from any source kind.
   `Source`'s variants stay public (it is the element type of the public
   field), but it has no public constructors — the `From` impls (including
-  the 1-tuple) are the whole surface.
+  the 1-tuple) are the whole surface. **Table sources** (2026-07-12): a
+  3-tuple `(format, path, layout)` and a 4-tuple
+  `(format, path, sheet, layout)` convert to `Source::Table { path,
+  format: Format, sheet: Option<String>, layout: TableLayout }` —
+  `format` is a `Format` or a format-id `&str` (never a `CustomFormat`,
+  which already controls everything itself), `path` is path-like,
+  `sheet` is `Into<String>`, `layout` is a `TableLayout`, a
+  `CustomLayout`, or a layout-id `&str`. Arity disambiguates against the
+  `(format, text)` string source, and each arity has one meaning
+  (2026-07-12; an earlier same-day DWIM rule — 3-tuple strings doubling
+  as sheet names — was reverted by the owner): the **3-tuple's third
+  element is always the layout** (it suits csv, where the file is the
+  table; an unknown layout-id string panics at conversion, listing the
+  valid ids), and **naming a sheet is always the 4-tuple**, which names
+  the layout explicitly too. On csv, a 4-tuple errors at load with the
+  sheet name echoed ("csv sources cannot name a sheet (got '…')"). A table source must resolve to
+  a single **file** of a table format — csv, excel, ods; a path that is
+  not a file is `Error::Parse` with a hint ("table sources read exactly
+  one file; for in-code text use a (format, text) string source" —
+  deliberately not `NotFound`, because the common mistake is passing csv
+  *text* as the path); any other format is
+  `Error::Parse` ("not a table format"), a compiled-out table format is
+  the usual "not compiled" parse error, and `(csv, path, sheet, layout)`
+  is `Error::Parse` (csv has no sheets). Naming a sheet reads **exactly
+  that sheet** — the prefix/hidden ignore options do *not* apply
+  (explicit wins), and a missing sheet is `Error::Parse` — and the
+  parsed value merges **under the sheet name as key** (mirroring tree
+  mode's sheet keying; two db-layout sheets would otherwise clobber
+  each other at the root). Without a sheet, the workbook follows the
+  normal config-sheet/tree selection with the given layout applied to
+  whatever parses. The trace label stays `SourceRef::File(path)`.
 - **Hot reload is intentionally not a feature.** Watching is
   policy-heavy (debounce, error handling, threading model) and trivially
-  composable by users; `examples/watch` shows the canonical pattern
+  composable by users; `examples/hot-reload` shows the canonical pattern
   (`notify` + re-run `load()`). Revisit only if a compelling API shape
   appears (decided 2026-07).
 - **Provenance is a typed API, and a debug/test aid only.**
@@ -160,15 +237,62 @@ as `--tree`.
 
 ### Table stage
 
-Rows are `key,value[,format]` **positionally** — col 0 is the key, col 1
-the value, col 2 the optional type id. The stage has **no options**: no
-header handling, no column renaming/reordering (there is no
-`TableOptions`). A header row or non-positional columns are the caller's
-job — a `CustomFormat` that drops/maps the header and lowers the file to
-positional rows before `parse_table` (the `csv-header` example and the
-`custom_md` markdown format both do this). Row numbers in `Error::Table`
-are 1-based; blank rows are skipped; `dot_key` expands dotted keys; rows
-deep-merge in order.
+The stage interprets a plain row table under a **`TableLayout`**
+(2026-07-12) — public enum in `src/options.rs`, id-convertible like
+`Order` (`TableLayout::from_id` / `From<&str>`, panics on unknown id):
+
+- **`Kv`** (id `kv`, alias `kvf`) — the default for csv (each format
+  has a default layout: `Format::default_layout` = kv for csv, db for
+  excel/ods). Rows are `key,value[,format]` **positionally** — col 0 the
+  key, col 1 the value, col 2 the optional type id. Blank rows are
+  skipped; `dot_key` expands dotted keys; rows deep-merge in order.
+- **`Db`** (id `db`) — a database-style grid: the first non-blank row
+  holds the **keys**, the second non-blank row **always** the **type
+  ids** (a cell may be empty = `auto`; there is deliberately no
+  typeless variant — one less API, and the convention stays uniform:
+  planners always see the type row), every following row is one
+  record. The type row is **validated eagerly** (2026-07-12): every
+  non-empty cell must be a known (compiled-in) type id, else
+  `Error::Table` at the type row's real row number with a hint
+  ("unknown or disabled type id '…' in the type row — if this sheet is
+  key,value rows, use the \"kv\" layout (spreadsheets default to db)").
+  This makes a kv-shaped sheet under the db default fail loudly — a
+  two-row kv sheet would otherwise silently parse to an empty array —
+  and catches typo'd/disabled ids even in columns that never carry
+  data. The result is a `Value::Array` of one object per record:
+  `[[a,b],[i8,ipv4],[4,1.1.1.1],[5,2.2.2.2]]` →
+  `[{a:4,b:1.1.1.1},{a:5,b:2.2.2.2}]`. Empty cells (and cells beyond
+  the key row's width, and columns whose key cell is empty) are
+  **omitted** from that record's object — sparse tables give sparse
+  objects, which plays well with `#[serde(default)]`/`Option`.
+  `dot_key` applies to the keys (a `stats.atk` column nests per
+  record). A grid with no non-blank rows is `Value::Null` (contributes
+  nothing); a key row with no records is an empty array. Two db
+  sources do **not** concatenate — the arrays replace each other like
+  any array (merge rule 2). A grid
+  **without** a type row is the canonical `CustomLayout` pattern:
+  insert a row of `auto` cells after the header and delegate to the
+  `Db` layout (shown in the `xlsx-sheets` example and the
+  `csv_db_no_types` fixture) — `DbAuto` existed briefly and was
+  removed on owner request (2026-07-12).
+- **`Custom(CustomLayout)`** — the rows escape hatch:
+  `CustomLayout::new(id, |rows, path, options| …)` receives the lowered
+  `Vec<Vec<String>>` and returns any `Value`. This is how one sheet of
+  a workbook gets fully custom treatment (binary formats can't use
+  `CustomFormat`, which parses text).
+
+Cell typing is shared across layouts: the type ids below, the `bad`
+message shape, and `Error::Table` row numbers (1-based, and real
+spreadsheet rows for sheets) all behave identically. The stage still
+has **no Options fields**: the layout arrives per call, chosen per
+source via table-source tuples. **One** public entry point:
+`parse_table(rows, &TableLayout, path, options)` — the layout is always
+explicit (the `Kv`-shorthand `parse_table(rows, path, options)` and the
+separate `parse_table_as` were merged on owner request, 2026-07-12: one
+function, no hidden default). Header
+rows/renamed/reordered columns for the **kv** layout remain a
+`CustomFormat` job (the `csv-header` example and the `custom_md`
+markdown format both drop/map the header and stay positional).
 
 Type ids ("formats" in the column): `i8`–`i64`, `u8`–`u64`, `i128`,
 `u128`, `f32`/`f64` (f32 rounds through `f32` precision), `bool`, `str`,
@@ -181,9 +305,13 @@ explicit `bool` cell also accepts (case-insensitive) `t`/`f`,
 **explicit-only** — `auto` never widens past `i64`/`u64`/`f64`.
 Feature-gated ids: `dt` (by `datetime`), `date`, `time`, `ipv4`, `ipv6`,
 `inet`, `cidr`, `macaddr`, `macaddr8`, `uuid` (same-named features), and
-`json` — a whole JSON document as the cell (array/object/null/scalar),
-available whenever the `json` **or** `jsonc` feature is compiled in
-(parsed by whichever is present; no opt-in flag). Without its feature an
+`json` / `jsonc` — a whole document as the cell (array/object/null/
+scalar). The cell format ids mirror the file formats **one-to-one**:
+`json` parses with the strict json parser (feature `json`), `jsonc` with
+the jsonc parser (feature `jsonc`) — the old "`json` works under either
+feature, parsed by whichever is present" fallback was removed on owner
+request (2026-07-12; a format id names its parser, exactly like file
+extensions do). Without its feature an
 id is an *unknown format* → `Error::Table`; only `auto` (and toml
 datetime literals) degrade to strings, because they merely stop
 guessing. Failures use one shared `bad` closure: `'{value}' is not a
@@ -226,6 +354,78 @@ bigint beyond the target type is not representable → auto falls back to
 string, explicit ids error). Radix/bigint forms convert to floats
 through integers.
 
+### Spreadsheet formats (features `excel`, `ods`)
+
+Both are table-shaped **binary** formats read with `calamine` (pinned
+`0.35` — `0.36` needs rustc 1.88, past our MSRV) and lowered to rows
+for the standard table stage. Their **default layout is `db`**
+(`Format::default_layout`; csv defaults to `kv`) — a sheet is a record
+grid unless a table source or a `formats` entry says otherwise; nothing
+else about type ids, `dot_key` or merging is spreadsheet-specific.
+
+- `excel` → `Format::Excel`, id `excel`, default extensions `xlsx`,
+  `xlsm`, `xlsb`, `xls`. The reader is picked by the actual file
+  extension (`xls` → Xls, `xlsb` → Xlsb, anything else → Xlsx), so a
+  remapped extension parses as xlsx. `ods` → `Format::Ods`, id `ods`,
+  default extension `ods` (the feature was renamed from `opendocument`
+  to `ods` on 2026-07-12 — feature, format id and extension now share
+  one name). Both are format features (they satisfy the no-format
+  `compile_error!` guard) and both are implied by `cli`.
+- **File-only.** A `(excel|ods, text)` string source is `Error::Parse`
+  ("binary format — file sources only"); the loader parses these formats
+  from the path (no `read_to_string`), so binary bytes never hit the
+  text pipeline. Without the feature the extension is simply unclaimed
+  (and a manually added `Format::Excel` spec errors "not compiled", like
+  any other format).
+- **Sheet selection.** Non-worksheet sheets (chart/dialog/macro/VBA —
+  an Excel-only concept) are always skipped. Then two independent
+  `Options` fields, both default `true`:
+  - `ignore_hidden_sheets` — skip sheets marked hidden in the workbook
+    (xlsx `hidden`/`veryHidden`; ods `table:display="false"`).
+  - `ignore_sheet_prefix` — skip sheets whose name starts with `#`, `.`
+    or `_`.
+- **`tree: false` (merge mode):** of the remaining sheets, exactly the
+  one named `config` (exact, case-sensitive) parses; every other sheet
+  is ignored. A workbook with no `config` sheet contributes nothing
+  (Null root) — same rule as an empty file.
+- **`tree: true`:** every remaining sheet parses and the workbook's
+  value is an object keyed by sheet name — `a/b.xlsx` with sheets `c`,
+  `d` loads as `{a: {b: {c: …, d: …}}}`. This is the parse result, so it
+  applies wherever the workbook appears (a single-file source under
+  `tree: true` merges the sheet-keyed object into the root); sheet keys
+  deep-merge like any keys and `case_sensitive` applies. No sheets left
+  after filtering → Null (contributes nothing).
+- **Explicit sheet (table sources):** a `(format, path, sheet, layout)`
+  source reads exactly that sheet with that layout, skips the ignore
+  filters, errors when the sheet is missing, and merges under the sheet
+  name — see the table-sources bullet in the design principles. Several
+  sources may point at the same workbook to give each sheet its own
+  layout (the `xlsx-sheets` example).
+- **Grid → rows, anchored at A1.** Leading empty rows/columns are padded
+  in, so column A is always the key, B the value, C the type id — and
+  `Error::Table` row numbers are real spreadsheet row numbers (blank
+  rows are skipped by the table stage as usual).
+- **Cells lower to text** before the table stage: strings as-is; numbers
+  via Rust `Display` (`8080`, `1.5`); booleans `true`/`false`; empty
+  cells `""`; ods ISO date/duration text as-is. Excel serial datetimes
+  convert without chrono (via calamine's `to_ymd_hms_milli`):
+  fraction-only serials (< 1.0, time-formatted cells) → `hh:mm:ss[.mmm]`,
+  whole-day serials at midnight → `YYYY-MM-DD`, otherwise
+  `YYYY-MM-DD hh:mm:ss[.mmm]` (space separator; `.mmm` only when
+  non-zero); duration-formatted cells → `hh:mm:ss[.mmm]` of the total.
+  Formula cells contribute their cached result; error cells (`#DIV/0!`
+  …) are `Error::Parse`.
+- CLI: `--ignore-sheet-prefix` / `--ignore-hidden-sheets` (+ `--no-`
+  forms). Neither format is an output format (`-f excel` stays unknown).
+- Binary fixtures are generated, not hand-edited: `tools/gen-sheets`
+  (a standalone zero-dependency Rust crate — it hand-writes stored-entry
+  zips with a fixed timestamp, so output is byte-deterministic; it
+  replaced an earlier python script on 2026-07-12) rebuilds every
+  `.xlsx`/`.ods` fixture plus the `xlsx-sheets` example workbook:
+  `cargo run --manifest-path tools/gen-sheets/Cargo.toml`. CI regenerates
+  and `git diff --exit-code`s to prove the checked-in binaries match the
+  generator.
+
 ### Value and format ids
 
 `Value`: Null / Bool / Int(i64) / Uint(u64) / Int128(i128) /
@@ -256,11 +456,14 @@ canonical flag reference (README only points at it — and at
 `src/main.rs`): output flags `-f`/`--format`, `-o`/`--output`,
 `--trace`; `--order <id>` (`Order::from_id`); and one flag per boolean
 option (`--recursive`, `--flat`, `--dot-key`, `--case-sensitive`,
-`--tree`, `--auto-files`, `--ignore-unknown-ext`), each with a
+`--tree`, `--auto-files`, `--ignore-unknown-ext`,
+`--ignore-sheet-prefix`, `--ignore-hidden-sheets`), each with a
 `--no-<name>` counterpart. Value flags accept `--flag v` or `--flag=v`.
 Neither `formats` nor any table setting is exposed (the `cli` feature
 enables all formats; csv is positional-only — a header is a
-`CustomFormat`, which the CLI cannot register). Output format resolution ("auto"): `-f` (ids + `debug`;
+`CustomFormat`, which the CLI cannot register — and table sources /
+layouts are library-only: CLI positional sources are always plain
+paths). Output format resolution ("auto"): `-f` (ids + `debug`;
 `jsonc` = `json`) → `-o` extension → `debug` (Rust `{:#?}` of
 `Value`/`TracedValue`). With `-o` nothing goes to stdout. Deterministic
 output: sorted keys everywhere; json = two-space pretty + trailing
@@ -306,36 +509,77 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
 - `tests/formats.rs` — csv table schema (scalars + aliases, auto +
   leading-zero rule, numeric literals on/off, `i128`/`u128` typed cells
   + auto-never-widens, `bool` two-way tokens + strict case-insensitive
-  auto, the `json` cell gated on `json`|`jsonc`, the `CustomFormat` table
+  auto, the `json`/`jsonc` cells gated on their own features, the `CustomFormat` table
   escape hatches that replace the old `TableOptions` — a header/renamed/
   reordered-columns format and a transposed (column-oriented) format,
   dt/date/time/ip/inet/cidr/mac/uuid typed +
   auto-guess + unknown-type + bad-value row assertions, PostgreSQL
   mac/inet/cidr forms), strict json, ext_override, formats_tuple,
   custom_md, toml/ini/env basics, toml datetime following the `datetime`
-  feature — each behind its format's `#[cfg(feature)]`.
+  feature — each behind its format's `#[cfg(feature)]`. Spreadsheet
+  cases (all sheet content is db-shaped, the spreadsheet default
+  layout): excel_basic (a db config sheet — typed columns, an auto
+  column, a dotted key column, a sparse record — + ignored
+  named/prefixed/hidden sheets + a workbook with no config sheet),
+  excel_hidden_config /
+  excel_hidden_config_off (the `ignore_hidden_sheets` variant pair),
+  excel_tree / excel_tree_prefix_off (tree mode sheet keys, the
+  `ignore_sheet_prefix` variant pair; gated on `tree` too),
+  excel_datetime (serial date/time/dt cells typed by a db type row;
+  gated on `datetime`),
+  excel_bad (config only: bad typed cell on a padded grid asserts real
+  spreadsheet row numbers), plus a single-file `.xlsx` path source and
+  the string-source `Error::Parse`; ods_basic / ods_tree mirror the
+  same rules for `ods`. Table layouts: csv_db (db grid: type row, sparse
+  cells omitted, dotted key column) / csv_db_no_types (no type row —
+  the insert-an-`auto`-row `CustomLayout` pattern; also the format-id
+  tuple form) / csv_db_bad (config
+  only: bad cell reports its real row) / a csv-names-a-sheet error, all
+  via table-source tuples; excel_sheets (one workbook, five sheet-naming
+  sources: kv + db + a no-type-row `CustomLayout` + a transposing
+  `CustomLayout` + an
+  explicitly named `_`-prefixed sheet, each keyed by sheet name — all
+  4-tuples) and a
+  missing-sheet error. Type-row validation: csv_db_bad/config/types.csv
+  (a kv-shaped file under the db layout errors at the type row with the
+  kv hint) and the same assertion against excel_kv_formats without its
+  kv override. Formats-level layouts: csv_db_formats (a folder
+  of csv claimed by `(csv, ["csv"], "db")`) and excel_kv_formats (a
+  kv-shaped config sheet read via `(excel, ["xlsx"], "kv")` — the
+  override direction opposite to each format's default). The binary fixtures come from
+  `tools/gen-sheets`.
 - `tests/sources.rs` — single file (Path form), a unified path source
   (folder vs file), multi_sources precedence, string-source override via
   a `(format, text)` tuple (trace label `string:<index>`), 1-tuple
   `(value,)` overrides (label `value:<index>`, serde shapes,
   non-string-key error at load time). Sources are a plain `vec![…]` with
   `.into()` per element (`order_converts_from_id` covers
-  `Order::from_id`/`From<&str>`).
+  `Order::from_id`/`From<&str>`; `table_layout_converts_from_id`,
+  `table_source_requires_a_table_format` and `table_source_must_be_a_file`
+  cover the table-source surface).
 - `examples/<name>/` — each example is a **standalone crate**: its own
   `Cargo.toml` (`c4 = { path = "../.." }`), `src/main.rs`, config files
   and a committed `output.log` with the exact expected output. Run with
   `cd examples/<name> && cargo run`; paths inside are relative to the
   example folder so the logs are machine-independent. The root crate
   sets `autoexamples = false`, so they are not cargo example targets
-  and their dependencies (e.g. `notify` in `watch`) stay out of the
+  and their dependencies (e.g. `notify` in `hot-reload`) stay out of the
   library's tree. `readme-simple` / `readme-advanced` mirror the
-  README; `watch` is the DIY hot-reload pattern (self-driving demo:
+  README; `hot-reload` (renamed from `watch`, 2026-07-12) is the DIY
+  hot-reload pattern (self-driving demo:
   scripted edits against a temp copy keep the log reproducible);
   `csv-header` (header + renamed/reordered columns) and `csv-transpose`
   (a column-oriented grid transposed into rows) are the table escape
   hatches — each a `CustomFormat` using the `csv` crate to read and
   `c4::parse_table` to interpret, replacing what `TableOptions` used to
-  do. After changing an example, regenerate its `output.log`.
+  do. `xlsx-sheets` is the multi-sheet workbook pattern: one
+  `config.xlsx` (generated by `tools/gen-sheets`), five sheet-naming table
+  sources — kv, db, two `CustomLayout`s (no-type-row db, transpose), and an
+  explicitly named `_`-prefixed sheet — plus a typed `Vec<Item>`
+  deserialize of a db sheet. `csv-db` is the same db layout on a plain
+  csv file: a `(Format::Csv, path, "db")` table source loaded straight
+  into a `Vec<Item>`. After changing an example, regenerate its
+  `output.log`.
 - `tests/cli.rs` (`#![cfg(feature = "cli")]`) — every folder under
   `tests/cli/<case>/` holds `args.txt` + one `result.*` file compared
   byte-for-byte against the binary's stdout (via
@@ -352,6 +596,7 @@ cargo test                            # default features
 cargo test --all-features             # every format + value parser
 cargo test --features cli             # builds the binary + CLI stdout tests
 cargo test --features csv,datetime,inet   # typed value parsers on
+cargo test --features excel,ods,tree,datetime   # spreadsheet formats
 cargo test --no-default-features --features yaml   # single-format build must pass
 cargo test --test basic simple_mixed_formats       # one test by name
 cargo test --doc                      # doc tests only
@@ -372,15 +617,19 @@ no long-lived token secret). `secrets.TELEGRAM_BOT_TOKEN` /
 `TELEGRAM_CHAT_ID` feed the notify job.
 When touching feature-gated behavior, run the matrix: default,
 `--all-features`, `--features cli`, each single format via
-`--no-default-features`, and partial value-parser combinations
-(`csv,inet`, `csv,datetime`, `csv,macaddr`, `csv,numeric`,
-`csv` alone — the last exercises the `json` cell with neither `json` nor
-`jsonc`, and `numeric` off).
+`--no-default-features` (including `excel` and `ods`), and
+partial value-parser combinations (`csv,inet`, `csv,datetime`,
+`csv,macaddr`, `csv,numeric`, `csv` alone — the last exercises the
+`json`/`jsonc` cell ids with both features off, and `numeric` off —
+plus `excel,tree,datetime` for the sheet-key and serial-datetime
+paths).
 
 ## Architecture notes
 
 - `src/lib.rs` — facade only: crate docs, the `compile_error!` guard,
-  module declarations, re-exports, `load(path)` and `parse_table`.
+  module declarations, re-exports, `load(path)` and
+  `parse_table(rows, &layout, path, options)` (the single table entry —
+  no layout-defaulting variant).
 - `src/error.rs` — `Error` / `Result`.
 - `src/options.rs` — the plain-data surface: `Options`, `Order`
   (id-convertible via `from_id`/`From<&str>`), `Format`, `FormatKind`,
@@ -413,16 +662,24 @@ When touching feature-gated behavior, run the matrix: default,
   yaml/toml use serde_yaml/toml; ini/env are hand-rolled (env:
   `KEY=VALUE`, `#` comments, optional `export`, quote stripping, no
   interpolation, values always strings); csv lowers to rows for
-  `table.rs` (always compiled).
+  `table.rs` (always compiled); sheet.rs (gated on
+  `any(excel, ods)`, calamine) holds both spreadsheet formats —
+  workbook opening, sheet selection, cell-to-text lowering (with unit
+  tests for the serial-datetime conversion) — and feeds the same
+  `table.rs`. Binary formats parse from the path: `format::parse` (the
+  text entry) rejects them, and the loader calls `format::parse_binary`
+  instead of `read_to_string` when `format::is_binary` says so.
 - `src/main.rs` — the CLI (feature `cli`, `required-features` on the
   bin target).
 - Feature map: `datetime = ["date", "time"]` and gates the `dt` id
   (`dt` is a format id, not a feature); `inet = ["ipv4", "ipv6",
   "cidr"]`; `macaddr = ["macaddr8"]`; `numeric` (off by default) gates
   extended table numeric literals; the `json` table cell id is gated on
-  `json`|`jsonc`; `tree` gates tree mode; `cli` implies all
-  formats + `datetime`, `inet`, `macaddr`, `uuid`, `numeric`, `tree`.
-  `default = ["jsonc", "yaml"]`.
+  `json` and the `jsonc` cell id on `jsonc` (one-to-one with the file
+  formats); `tree` gates tree mode; `excel` and `ods`
+  (both `dep:calamine`) are format features like any other; `cli`
+  implies all formats + `datetime`, `inet`, `macaddr`, `uuid`,
+  `numeric`, `tree`. `default = ["jsonc"]`.
 - Crate naming (decided 2026-07-05): the crates.io package is
   `c4-config` (verified available; `c4` itself is taken), while the lib
   target and the binary keep the name `c4` — users `cargo add c4-config`
