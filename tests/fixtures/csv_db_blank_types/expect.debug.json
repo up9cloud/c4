@@ -1,0 +1,9 @@
+{
+  "$id": "Leaf",
+  "value": [
+    { "exp": 0, "lv": 0 },
+    { "exp": 5, "lv": 1 }
+  ],
+  "source": "tests/fixtures/csv_db_blank_types/config/data.csv",
+  "format": "arr"
+}

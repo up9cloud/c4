@@ -77,13 +77,18 @@ fn kv(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
     Ok(root)
 }
 
-/// The db layout: the first non-blank row holds the keys, the next one
-/// always the type ids, and every following row is one record — the
-/// result is an array of one object per record. Empty cells, cells
-/// beyond the key row's width, and columns whose key cell is empty are
-/// omitted from their record; `dot_key` nests dotted keys per record.
-/// Row numbers in errors are the incoming row indices (real spreadsheet
-/// rows for sheets), 1-based.
+/// The db layout: the first non-blank row holds the keys, the row
+/// immediately after it always the type ids — even an all-blank row
+/// (every cell empty = every column `auto`; the type row is positional,
+/// so it is never skipped as blank — spreadsheet writers usually don't
+/// materialize an all-empty row, and skipping it would silently consume
+/// the first record as type ids) — and every following row is one
+/// record — the result is an array of one object per record. Empty
+/// cells, cells beyond the key row's width, and columns whose key cell
+/// is empty are omitted from their record; `dot_key` nests dotted keys
+/// per record. Blank rows skip only before the key row and between
+/// records. Row numbers in errors are the incoming row indices (real
+/// spreadsheet rows for sheets), 1-based.
 fn db(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
     let mut keys: Option<Vec<String>> = None;
     let mut types: Vec<String> = Vec::new();
@@ -91,13 +96,16 @@ fn db(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
     let mut records = Vec::new();
     for (index, cells) in rows.into_iter().enumerate() {
         let row = index + 1;
-        if cells.iter().all(|cell| cell.is_empty()) {
-            continue; // blank row
-        }
+        let blank = cells.iter().all(|cell| cell.is_empty());
         let Some(keys) = &keys else {
-            keys = Some(cells.iter().map(|cell| cell.trim().to_owned()).collect());
-            continue;
+            if !blank {
+                keys = Some(cells.iter().map(|cell| cell.trim().to_owned()).collect());
+            }
+            continue; // blank rows before the key row
         };
+        if blank && saw_types {
+            continue; // blank row between records
+        }
         if !saw_types {
             // validate the type row eagerly: a kv-shaped sheet under
             // the db default fails loudly here instead of silently

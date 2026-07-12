@@ -1,0 +1,9 @@
+{
+  "$id": "Leaf",
+  "value": [
+    { "exp": 0, "lv": 0 },
+    { "exp": 5, "lv": 1 }
+  ],
+  "source": "tests/fixtures/excel_blank_type_row/config/app.xlsx",
+  "format": "arr"
+}

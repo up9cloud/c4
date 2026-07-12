@@ -882,6 +882,16 @@ mod excel {
     }
 
     #[test]
+    fn physically_absent_type_row_is_all_auto() {
+        // the workbook has no row 2 at all (writers don't materialize
+        // an all-empty row): keys at row 1, records from row 3. The
+        // padded-in blank row 2 is the type row (all auto) — it must
+        // not skip as blank, which would consume the first record as
+        // type ids.
+        check("excel_blank_type_row", c4::Options::default());
+    }
+
+    #[test]
     fn bad_typed_cell_reports_the_real_spreadsheet_row() {
         // the grid starts at row 3 of the sheet, so its bad data cell
         // sits on row 5; padded leading rows keep Error::Table row
@@ -1023,6 +1033,26 @@ mod table_layouts {
         check_table(
             "csv_db_no_types",
             vec![("csv", fx("csv_db_no_types/config/data.csv"), no_types).into()],
+        );
+    }
+
+    #[test]
+    fn db_all_blank_type_row_is_all_auto() {
+        // the type row is positional — the row right after the keys is
+        // the type row even when entirely blank (= every column auto);
+        // it must not skip as a blank row, which would consume the
+        // first record as type ids. Blank rows before the keys and
+        // between records still skip.
+        check_table(
+            "csv_db_blank_types",
+            vec![
+                (
+                    c4::Format::Csv,
+                    fx("csv_db_blank_types/config/data.csv"),
+                    "db",
+                )
+                    .into(),
+            ],
         );
     }
 

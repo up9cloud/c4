@@ -247,11 +247,19 @@ The stage interprets a plain row table under a **`TableLayout`**
   key, col 1 the value, col 2 the optional type id. Blank rows are
   skipped; `dot_key` expands dotted keys; rows deep-merge in order.
 - **`Db`** (id `db`) — a database-style grid: the first non-blank row
-  holds the **keys**, the second non-blank row **always** the **type
-  ids** (a cell may be empty = `auto`; there is deliberately no
-  typeless variant — one less API, and the convention stays uniform:
-  planners always see the type row), every following row is one
-  record. The type row is **validated eagerly** (2026-07-12): every
+  holds the **keys**, and the row **immediately after the key row** is
+  **always** the **type ids** (a cell may be empty = `auto`; there is
+  deliberately no typeless variant — one less API, and the convention
+  stays uniform: planners always see the type row), every following
+  row is one record. The type row is **positional, not "next
+  non-blank"** (2026-07-12): an all-blank row right after the keys is
+  a type row of all `auto`s, not a blank row to skip. Spreadsheet
+  writers usually don't materialize an all-empty row, so under the
+  earlier "second non-blank row" reading a legally all-`auto` type row
+  vanished and the first record was consumed as the type ids (an
+  all-numeric record then failed eager validation with the misleading
+  kv hint — found via mg2x's `levels` sheet). Blank rows are skipped
+  only **before the key row** and **between records**. The type row is **validated eagerly** (2026-07-12): every
   non-empty cell must be a known (compiled-in) type id, else
   `Error::Table` at the type row's real row number with a hint
   ("unknown or disabled type id '…' in the type row — if this sheet is
@@ -534,8 +542,12 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   cells omitted, dotted key column) / csv_db_no_types (no type row —
   the insert-an-`auto`-row `CustomLayout` pattern; also the format-id
   tuple form) / csv_db_bad (config
-  only: bad cell reports its real row) / a csv-names-a-sheet error, all
-  via table-source tuples; excel_sheets (one workbook, five sheet-naming
+  only: bad cell reports its real row) / csv_db_blank_types (all-blank
+  type row = all `auto`; blank rows before the keys and between records
+  still skip) / a csv-names-a-sheet error, all
+  via table-source tuples; excel_blank_type_row (the same positional
+  type row end-to-end: the workbook's row 2 physically absent, keys at
+  row 1, records from row 3); excel_sheets (one workbook, five sheet-naming
   sources: kv + db + a no-type-row `CustomLayout` + a transposing
   `CustomLayout` + an
   explicitly named `_`-prefixed sheet, each keyed by sheet name — all

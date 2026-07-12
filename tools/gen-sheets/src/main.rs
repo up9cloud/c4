@@ -148,6 +148,24 @@ fn main() {
         )],
     );
 
+    // excel_blank_type_row: the type row is positional — row 2 is
+    // physically absent (writers don't materialize an all-empty row),
+    // keys at row 1, records from row 3; the padded-in blank row 2 must
+    // read as a type row of all `auto`s, not skip as a blank row (which
+    // would consume the first record as type ids).
+    write_xlsx(
+        &fixtures.join("excel_blank_type_row/config/app.xlsx"),
+        &[(
+            "config",
+            false,
+            vec![
+                (1, vec![S("lv"), S("exp")]),
+                (3, vec![N(0.0), N(0.0)]),
+                (4, vec![N(1.0), N(5.0)]),
+            ],
+        )],
+    );
+
     // excel_sheets: one workbook, several sheets, each read by its own
     // table source (sheet name + layout); `_extra` proves an explicitly
     // named sheet bypasses the prefix filter.

@@ -224,7 +224,9 @@
 //!   type ids (empty cell = `auto`), every following row is one record;
 //!   the file parses to an **array** of objects, so a config sheet full
 //!   of game items deserializes straight into a `Vec<Item>`. Empty cells
-//!   are omitted from their record.
+//!   are omitted from their record. The type row is positional — the
+//!   row right after the keys is the type row even when it is entirely
+//!   blank (= every column `auto`); it is never skipped as a blank row.
 //! - **a [`CustomLayout`]**: your callback over the raw rows — reshape
 //!   them and call [`parse_table`]. A db grid
 //!   *without* a type row is the canonical case: insert a row of `auto`
