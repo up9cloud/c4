@@ -1,0 +1,45 @@
+{
+  "bytes": {
+    "$id": "Leaf",
+    "value": [
+      10,
+      20
+    ],
+    "source": "tests/fixtures/csv_list/config/data.csv",
+    "format": "arr:u64"
+  },
+  "matrix": {
+    "x": {
+      "$id": "Leaf",
+      "value": 1,
+      "source": "tests/fixtures/csv_list/config/data.csv",
+      "format": "i64"
+    },
+    "y": {
+      "$id": "Leaf",
+      "value": 2,
+      "source": "tests/fixtures/csv_list/config/data.csv",
+      "format": "i64"
+    }
+  },
+  "nums": {
+    "$id": "Leaf",
+    "value": [
+      1,
+      2,
+      3
+    ],
+    "source": "tests/fixtures/csv_list/config/data.csv",
+    "format": "arr:i64"
+  },
+  "tags": {
+    "$id": "Leaf",
+    "value": [
+      "a",
+      "b",
+      "c"
+    ],
+    "source": "tests/fixtures/csv_list/config/data.csv",
+    "format": "arr:str"
+  }
+}

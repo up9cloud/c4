@@ -1,0 +1,30 @@
+Monster {
+    name: "Dragon",
+    tags: [
+        "boss",
+        "flying",
+        "fire",
+    ],
+    loot: [
+        "gold",
+        "gems",
+        "potion",
+    ],
+    phases: [
+        1,
+        2,
+        3,
+    ],
+    attacks: [
+        Attack {
+            name: "bite",
+            dmg: 12,
+            element: "physical",
+        },
+        Attack {
+            name: "breath",
+            dmg: 30,
+            element: "fire",
+        },
+    ],
+}

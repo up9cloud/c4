@@ -269,6 +269,20 @@
 //! | `macaddr`, `macaddr8` | — | same-named | the PostgreSQL MAC spellings |
 //! | `uuid` | — | `uuid` | hyphenated or bare 32-hex |
 //! | `json`, `jsonc` | — | same-named | a whole document in one cell, parsed by exactly that format's parser |
+//! | `array<sep><format>` | — | — | splits the cell into a flat list by `sep` (default `,`), each element parsed by `format` (default `auto`): `array\|` on `1\|2\|3` → `[1,2,3]`, `array\|u8` types them `u8`, `array\|str` keeps `["1","2","3"]` |
+//! | `csv<sep><layout>` | — | `csv` | parses the whole cell as a CSV document (delimiter `sep`, default `,`) under `layout` (default `kv`): `csv,kv` → object, `csv,db` → array of objects |
+//!
+//! `array` and `csv` are explicit-only (like `json`/`jsonc`) — `auto`
+//! never produces a list. `array` is always compiled (a native split);
+//! `csv` needs the `csv` feature. Both take an optional, **positional**
+//! suffix after the separator: `array<sep><format>` applies one type id
+//! to every element, and `csv<sep><layout>` picks the inner layout — in
+//! each case naming the suffix means writing the separator too
+//! (`array,i8`, `csv,db`), and the separator is a single character
+//! (ASCII for `csv`). `array<sep><format>` types **every** element the
+//! same; when a list's elements need **different** formats, use a `csv`
+//! cell instead (one `key,value,format` row each: `a,1,i8` / `b,2,i16`).
+//! Only the built-in layout ids `kv`/`db` are nameable in `csv`.
 //!
 //! An id whose feature is off is an unknown format and fails the row;
 //! only `auto` degrades (it just stops guessing). The `numeric` feature

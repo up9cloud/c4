@@ -1,0 +1,8 @@
+name,Dragon,str
+tags,boss|flying|fire,array|
+loot,"gold,gems,potion",array
+phases,1|2|3,array|u8
+attacks,"name,dmg,element
+str,u32,str
+bite,12,physical
+breath,30,fire","csv,db"

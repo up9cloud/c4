@@ -67,7 +67,7 @@ cargo test --all-features             # every format + value parser
 cargo test --features cli             # builds the binary + CLI stdout cases
 cargo test --no-default-features --features yaml   # single-format build must pass
 cargo test --doc                      # doc tests only
-(cd examples/readme-simple && cargo run)   # standalone example crates
+(cd examples/00_simple && cargo run)   # standalone example crates
 ```
 
 When touching feature-gated behavior, run the matrix: default,

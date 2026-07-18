@@ -2,7 +2,7 @@
 //! folder scanned recursively, an in-code string, a typed in-code
 //! value), then a provenance trace.
 //!
-//! Run inside this folder: `cd examples/readme-advanced && cargo run`
+//! Run inside this folder: `cd examples/01_advanced && cargo run`
 //! (expected output: `output.log` next to this file)
 
 use std::path::Path;

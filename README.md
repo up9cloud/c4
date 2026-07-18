@@ -132,17 +132,20 @@ subfolder is a **standalone crate** — its own `Cargo.toml`, config
 files, source, and an `output.log` showing exactly what it prints:
 
 ```sh
-cd examples/readme-simple && cargo run
+cd examples/00_simple && cargo run
 ```
 
-The `readme-simple` / `readme-advanced` crates walk through basic and
-multi-source usage; `csv-db` loads a CSV record grid (the `db` layout)
-straight into a `Vec<Item>`; `xlsx-sheets` reads one Excel workbook
-whose sheets each use a different table layout (settings, record
-grids, custom layouts); `csv-header` / `csv-transpose` are the CSV
-reshaping hatches; and `examples/hot-reload` shows DIY hot-reload —
-watching the config folder with the `notify` crate and re-running
-`load()` on changes; c4 itself stays a synchronous loader on purpose.
+| Folder | Shows |
+| ------ | ----- |
+| [`00_simple`](examples/00_simple) | the basic `load` from a config folder |
+| [`01_advanced`](examples/01_advanced) | multi-source usage (folders + files + in-code values) |
+| [`csv-db`](examples/csv-db) | a CSV record grid (the `db` layout) into a `Vec<Item>` |
+| [`csv-header`](examples/csv-header) | reshaping a CSV with a `CustomFormat` (header + renamed/reordered columns) |
+| [`csv-list`](examples/csv-list) | single cells expanded into lists via the `array` / `csv` type ids |
+| [`csv-transpose`](examples/csv-transpose) | a column-oriented CSV transposed into rows with a `CustomFormat` |
+| [`hot-reload`](examples/hot-reload) | DIY hot-reload — watch the folder with `notify`, re-run `load()` |
+| [`xlsx-sheets`](examples/xlsx-sheets) | one Excel workbook, a different table layout per sheet |
+
 Beyond that,
 every behavior has a fixture under [`tests/fixtures/`](tests/fixtures/):
 `config/` is the input, `expect.json` the merged result, and

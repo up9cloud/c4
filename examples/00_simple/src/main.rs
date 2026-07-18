@@ -2,7 +2,7 @@
 //! (or a single file); values are accessed dynamically or deserialized
 //! into a struct.
 //!
-//! Run inside this folder: `cd examples/readme-simple && cargo run`
+//! Run inside this folder: `cd examples/00_simple && cargo run`
 //! (expected output: `output.log` next to this file)
 
 // #[serde(default)] falls back to Default for any field no source set

@@ -80,6 +80,117 @@ mod csv {
         assert!(matches!(err, c4::Error::Table { row: 1, .. }));
     }
 
+    // --- list cell type ids: array<sep> and csv<sep><layout> ---
+
+    #[test]
+    fn array_splits_flat_and_auto_types_each_element() {
+        use c4::Value::{Array, Int, String as S};
+        // custom separator; elements go through the shared auto detection
+        assert_eq!(
+            csv_leaf("tags,a|b|c,array|", "tags"),
+            Array(vec![S("a".into()), S("b".into()), S("c".into())])
+        );
+        // default separator is `,` (quoted so the outer csv keeps one field)
+        assert_eq!(
+            csv_leaf("nums,\"1,2,3\",array", "nums"),
+            Array(vec![Int(1), Int(2), Int(3)])
+        );
+    }
+
+    #[test]
+    fn array_empty_cell_is_empty_array() {
+        assert_eq!(csv_leaf("x,,array", "x"), c4::Value::Array(vec![]));
+    }
+
+    #[test]
+    fn array_with_a_per_element_format() {
+        use c4::Value::{Array, String as S, Uint};
+        // `array|u8`: every element parsed as u8 (not the auto-guessed i64)
+        assert_eq!(
+            csv_leaf("lvls,3|5|8,array|u8", "lvls"),
+            Array(vec![Uint(3), Uint(5), Uint(8)])
+        );
+        // the format forces a type that differs from auto — here `str`
+        // keeps the digits as strings
+        assert_eq!(
+            csv_leaf("ids,1|2|3,array|str", "ids"),
+            Array(vec![S("1".into()), S("2".into()), S("3".into())])
+        );
+    }
+
+    #[test]
+    fn array_element_out_of_range_errors() {
+        // an element that does not fit its per-element format fails the row
+        let err = loader(vec![(c4::Format::Csv, "a,1|999,array|u8").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
+        assert!(matches!(err, c4::Error::Table { row: 1, .. }));
+    }
+
+    #[test]
+    fn csv_cell_kv_layout_yields_an_object() {
+        // the whole cell is a CSV document parsed under the kv layout
+        let value: c4::Value = loader(vec![
+            (c4::Format::Csv, "sub,\"a,1\nb,2\",\"csv,kv\"").into(),
+        ])
+        .load()
+        .unwrap();
+        assert_eq!(value["sub"]["a"], c4::Value::Int(1));
+        assert_eq!(value["sub"]["b"], c4::Value::Int(2));
+    }
+
+    #[test]
+    fn csv_cell_db_layout_yields_records() {
+        let value: c4::Value = loader(vec![
+            (c4::Format::Csv, "recs,\"a,b\ni64,i64\n1,2\",\"csv,db\"").into(),
+        ])
+        .load()
+        .unwrap();
+        assert_eq!(value["recs"][0]["a"], c4::Value::Int(1));
+        assert_eq!(value["recs"][0]["b"], c4::Value::Int(2));
+    }
+
+    #[test]
+    fn csv_cell_custom_separator() {
+        // `csv;kv`: inner delimiter is `;` (no comma, so the format cell
+        // survives the outer csv unquoted)
+        let value: c4::Value = loader(vec![(c4::Format::Csv, "m,\"a;1\nb;2\",csv;kv").into()])
+            .load()
+            .unwrap();
+        assert_eq!(value["m"]["a"], c4::Value::Int(1));
+        assert_eq!(value["m"]["b"], c4::Value::Int(2));
+    }
+
+    #[test]
+    fn csv_cell_unknown_layout_is_unknown_type() {
+        let err = loader(vec![(c4::Format::Csv, "m,x,\"csv,nope\"").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
+        assert!(matches!(err, c4::Error::Table { row: 1, .. }));
+    }
+
+    #[test]
+    fn csv_layout_is_positional_after_the_separator() {
+        // `csvdb` reads as separator `d` + layout `b` — an unknown id
+        let err = loader(vec![(c4::Format::Csv, "m,x,csvdb").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
+        assert!(matches!(err, c4::Error::Table { row: 1, .. }));
+    }
+
+    #[test]
+    fn csv_non_ascii_separator_is_unknown_type() {
+        let err = loader(vec![(c4::Format::Csv, "m,x,\"csv｜kv\"").into()])
+            .load::<c4::Value>()
+            .unwrap_err();
+        assert!(matches!(err, c4::Error::Table { row: 1, .. }));
+    }
+
+    #[test]
+    fn list_cells_load_from_a_fixture() {
+        check("csv_list", c4::Options::default());
+    }
+
     #[test]
     fn i128_and_u128_typed_cells() {
         // 128-bit is explicit-only; full-width values round-trip
@@ -1168,4 +1279,46 @@ mod excel_sheet_sources {
         .unwrap_err();
         assert!(matches!(err, c4::Error::Parse { .. }));
     }
+}
+
+// `array` is always compiled (a native split) — it works through
+// `parse_table` with no format feature at all.
+#[test]
+fn array_type_id_needs_no_feature() {
+    let rows = vec![vec![
+        "tags".to_string(),
+        "a|b|c".to_string(),
+        "array|".to_string(),
+    ]];
+    let value = c4::parse_table(
+        rows,
+        &c4::TableLayout::Kv,
+        std::path::Path::new("mem"),
+        &c4::Options::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        value["tags"],
+        c4::Value::Array(vec![
+            c4::Value::String("a".into()),
+            c4::Value::String("b".into()),
+            c4::Value::String("c".into()),
+        ])
+    );
+}
+
+// without the `csv` feature the `csv` list id is unknown, even via
+// `parse_table` (which is always compiled).
+#[cfg(not(feature = "csv"))]
+#[test]
+fn csv_type_id_without_csv_feature_is_unknown() {
+    let rows = vec![vec!["m".to_string(), "x".to_string(), "csv".to_string()]];
+    let err = c4::parse_table(
+        rows,
+        &c4::TableLayout::Kv,
+        std::path::Path::new("mem"),
+        &c4::Options::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(err, c4::Error::Table { row: 1, .. }));
 }

@@ -11,9 +11,16 @@
 //! with their same-named features, and the whole-document cells `json` /
 //! `jsonc` with theirs — cell format ids mirror the file formats
 //! one-to-one, each parsed by exactly its own parser (no cross-parser
-//! fallback). Without its feature an id is an unknown type and the row
+//! fallback). Two **list** ids expand a cell into a list:
+//! `array<sep><format>`
+//! (always compiled — a native split into a flat list, each element
+//! parsed by the per-element `format`, default `auto`) and
+//! `csv<sep><layout>` (feature `csv` — parses the whole cell as a CSV
+//! document under a [`TableLayout`], so its shape is whatever the layout
+//! yields). Both are explicit-only, like `json`/`jsonc`. Without its
+//! feature an id is an unknown type and the row
 //! errors. Only `auto` degrades (it just stops guessing shapes whose
-//! feature is off; it never produces `i128`/`u128` or `json`). An
+//! feature is off; it never produces `i128`/`u128`, `json` or a list). An
 //! explicit `bool` cell accepts the loose token set (`true/false, t/f,
 //! yes/no, y/n, on/off, 1/0`); `auto` stays strict `true`/`false`
 //! (case-insensitive).
@@ -71,7 +78,7 @@ fn kv(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
             .get(1)
             .ok_or_else(|| table_err(path, row, "missing value cell".into()))?;
         let declared = cells.get(2).map(|s| s.trim()).unwrap_or("");
-        let value = convert(raw, declared, path, row)?;
+        let value = convert(raw, declared, path, row, options)?;
         super::deep_merge(&mut root, super::expand_key(key, value, options.dot_key));
     }
     Ok(root)
@@ -137,7 +144,7 @@ fn db(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
                 continue; // no key above this column
             };
             let declared = types.get(column).map(String::as_str).unwrap_or("");
-            let value = convert(raw, declared, path, row)?;
+            let value = convert(raw, declared, path, row, options)?;
             super::deep_merge(&mut record, super::expand_key(key, value, options.dot_key));
         }
         records.push(record);
@@ -167,6 +174,18 @@ fn canonical_type(declared: &str) -> &str {
 /// Is this a type id [`convert`] can handle in this build? Keep the
 /// arms in sync with `convert` (feature gates included).
 fn known_type_id(declared: &str) -> bool {
+    // the list ids (`array<sep><format>`, `csv<sep><layout>`) parse before
+    // the scalar table below; `csv` also needs its feature
+    if let Some((_, format)) = parse_array_id(declared) {
+        // an empty per-element format means auto; otherwise it must itself
+        // be a known type id (validated recursively so `array,i8` and even
+        // a nested `array,array|` are caught in a db type row)
+        return format.is_empty() || known_type_id(format);
+    }
+    #[cfg(feature = "csv")]
+    if parse_csv_id(declared).is_some() {
+        return true;
+    }
     match canonical_type(declared) {
         "" | "auto" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "i128"
         | "u128" | "f32" | "f64" | "bool" | "str" => true,
@@ -198,7 +217,77 @@ fn known_type_id(declared: &str) -> bool {
     }
 }
 
-fn convert(raw: &str, declared: &str, path: &Path, row: usize) -> Result<Value> {
+/// The `array<sep><format>` list id: both parts optional and positional —
+/// after the literal `array` the first character (if any) is the
+/// separator (default `,`) and the rest (if any) is the per-element type
+/// id applied to every element (default empty = `auto`). `None` when it
+/// is not the array id. Because the separator is positional, naming a
+/// format means writing the separator too (`array,i8`).
+fn parse_array_id(declared: &str) -> Option<(char, &str)> {
+    let rest = declared.strip_prefix("array")?;
+    let mut chars = rest.chars();
+    let sep = chars.next().unwrap_or(',');
+    Some((sep, chars.as_str()))
+}
+
+/// The `csv<sep><layout>` list id: both parts optional and positional —
+/// after the literal `csv` the first character (if any) is the separator
+/// (default `,`, must be one ASCII byte) and the rest (if any) is a
+/// built-in layout id (default the csv format default, `kv`). `None` when
+/// it is not a usable csv id (non-ASCII separator, unknown/compiled-out
+/// layout, …), so the row lands on the unknown-type error.
+#[cfg(feature = "csv")]
+fn parse_csv_id(declared: &str) -> Option<(u8, TableLayout)> {
+    let rest = declared.strip_prefix("csv")?;
+    let mut chars = rest.chars();
+    let sep = match chars.next() {
+        None => b',',
+        Some(c) if c.is_ascii() => c as u8,
+        Some(_) => return None, // the csv delimiter is a single byte
+    };
+    let layout_id = chars.as_str();
+    let layout = if layout_id.is_empty() {
+        TableLayout::Kv // the csv format's default layout
+    } else {
+        // only built-in ids are nameable here — a CustomLayout has no id form
+        TableLayout::from_id(layout_id)?
+    };
+    Some((sep, layout))
+}
+
+/// The `array<sep><format>` cell: a flat list split on `sep`, each
+/// element parsed by `format` (empty = `auto`, so this reuses `convert`).
+/// An empty cell is `[]`.
+fn array_cell(
+    raw: &str,
+    sep: char,
+    format: &str,
+    path: &Path,
+    row: usize,
+    options: &Options,
+) -> Result<Value> {
+    if raw.is_empty() {
+        return Ok(Value::Array(Vec::new()));
+    }
+    let mut out = Vec::new();
+    for piece in raw.split(sep) {
+        out.push(convert(piece, format, path, row, options)?);
+    }
+    Ok(Value::Array(out))
+}
+
+fn convert(raw: &str, declared: &str, path: &Path, row: usize, options: &Options) -> Result<Value> {
+    // list ids first: `array<sep><format>` (native, always compiled) and
+    // `csv<sep><layout>` (feature `csv`) — both explicit-only
+    if let Some((sep, format)) = parse_array_id(declared) {
+        return array_cell(raw, sep, format, path, row, options);
+    }
+    #[cfg(feature = "csv")]
+    if let Some((sep, layout)) = parse_csv_id(declared) {
+        return super::csv::parse_with(raw, sep, &layout, path, options)
+            .map_err(|e| table_err(path, row, format!("invalid csv cell: {e}")));
+    }
+
     let ty = canonical_type(declared);
     if matches!(ty, "" | "auto") {
         return Ok(auto(raw));

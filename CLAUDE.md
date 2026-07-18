@@ -325,6 +325,61 @@ datetime literals) degrade to strings, because they merely stop
 guessing. Failures use one shared `bad` closure: `'{value}' is not a
 valid {ty}`.
 
+**List cell type ids (2026-07-17): `array` and `csv`.** Two explicit-only
+ids (like `json`/`jsonc`, `auto` never produces them) that expand one
+cell into a list; each carries an optional **single-character
+separator** (default `,`):
+
+- **`array<sep><format>`** — a **native** split (no parser dependency, so
+  **always compiled**, like `str`). Splits the cell into a **flat** list
+  by the separator and runs **each** piece through the shared cell
+  converter under the per-element `format` (so `array|` on `1|2|3` →
+  `[1,2,3]`, `array` on `a,b` → `["a","b"]`). Grammar
+  `array<sep><format>`, both parts optional and **positional** (exactly
+  like `csv<sep><layout>`): after the literal `array` the first character
+  (if any) is the separator (default `,`) and the rest (if any) is a
+  per-element type id applied to **every** element (default empty =
+  `auto`). So `array|u8` on `1|2|3` → `[1,2,3]` typed `u8`, `array,str`
+  keeps the pieces as strings; because the separator is positional,
+  naming a format means writing the separator too (`array,i8`). The
+  `format` reuses the whole cell-converter (any id `convert` handles,
+  including feature-gated ones and even a nested list id), is validated
+  recursively by `known_type_id` (so `array,i8` is caught in a db type
+  row), and an element that does not fit its format fails the row
+  (`'{value}' is not a valid {ty}` at the cell's row). One `format`
+  types **every** element the same; a list whose elements need
+  **different** formats is a **`csv`** cell (`a,1,i8` / `b,2,i16` rows).
+  There are **no multi-line semantics** — a newline is an ordinary
+  character inside an element (that is the whole difference from `csv`);
+  no trimming (pieces reach the converter verbatim); an empty cell →
+  `[]` (empty array).
+- **`csv<sep><layout>`** — gated on the **`csv`** feature (it reuses the
+  csv parser; without the feature `csv` is an unknown id). Parses the
+  **whole cell as a CSV document** (csv crate, `delimiter = sep`,
+  headerless, flexible) into rows, then runs the standard table stage
+  under the named `TableLayout` — so the cell's shape is **whatever that
+  layout produces** (`csv,kv` → an object, `csv,db` → an array of
+  objects); there is no raw `[[…]]` form. Grammar `csv<sep><layout>`,
+  both parts optional and **positional**: after the literal `csv` the
+  first character (if any) is the separator, the rest (if any) is the
+  layout id; defaults are separator `,` and the csv format default layout
+  (`kv`). So `csv` = `csv,kv`, `csv;` = sep `;` layout `kv`, `csv,db` =
+  sep `,` layout `db`, `csv;db` = sep `;` layout `db`. Because the
+  separator is positional, naming a layout means writing the separator
+  too — `csvdb` reads as separator `d` + layout `b` (unknown id). The
+  separator must be a single **ASCII** byte (the csv delimiter is one
+  byte); a non-ASCII separator, an unknown layout id, or a compiled-out
+  layout all make the id unknown. Only built-in layout ids are nameable
+  (`kv`/`db`) — a `CustomLayout` has no id form here. Nested tables
+  recurse (a `csv,db` cell whose content has a `csv` column parses the
+  inner cell too). A cell whose content fails to parse errors at the
+  **outer** cell's row (`… row N: invalid csv cell: …`).
+
+Both ids are recognised by `known_type_id` (honoring the `csv` feature,
+the ASCII-separator rule and the layout id), so an `array`/`csv` id in a
+`db` type row is validated eagerly like any other, and error rows are the
+usual real 1-based (spreadsheet) row numbers.
+
 PostgreSQL-definition types (shape rules in crate-private `src/valid.rs`,
 each with exhaustive accept/reject unit tests):
 
@@ -517,7 +572,15 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
 - `tests/formats.rs` — csv table schema (scalars + aliases, auto +
   leading-zero rule, numeric literals on/off, `i128`/`u128` typed cells
   + auto-never-widens, `bool` two-way tokens + strict case-insensitive
-  auto, the `json`/`jsonc` cells gated on their own features, the `CustomFormat` table
+  auto, the `json`/`jsonc` cells gated on their own features, the
+  `array`/`csv` list cells (array's native split + auto-typed elements +
+  custom separator + empty→`[]` + a per-element `array<sep><format>`
+  (u8-typed + str-forced elements + an out-of-range element error);
+  csv's `csv<sep><layout>` grammar — kv
+  and db layouts, custom separator, the positional `csvdb`→unknown and
+  non-ASCII-separator and unknown-layout errors; array always compiled
+  via `parse_table`, csv unknown without the `csv` feature — plus the
+  `csv_list` fixture check), the `CustomFormat` table
   escape hatches that replace the old `TableOptions` — a header/renamed/
   reordered-columns format and a transposed (column-oriented) format,
   dt/date/time/ip/inet/cidr/mac/uuid typed +
@@ -576,7 +639,9 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   example folder so the logs are machine-independent. The root crate
   sets `autoexamples = false`, so they are not cargo example targets
   and their dependencies (e.g. `notify` in `hot-reload`) stay out of the
-  library's tree. `readme-simple` / `readme-advanced` mirror the
+  library's tree. `00_simple` / `01_advanced` (folders numbered to sort
+  first; package names `example-00-simple`/`example-01-advanced`, since a
+  crate name cannot start with a digit) mirror the
   README; `hot-reload` (renamed from `watch`, 2026-07-12) is the DIY
   hot-reload pattern (self-driving demo:
   scripted edits against a temp copy keep the log reproducible);
@@ -590,7 +655,12 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   explicitly named `_`-prefixed sheet — plus a typed `Vec<Item>`
   deserialize of a db sheet. `csv-db` is the same db layout on a plain
   csv file: a `(Format::Csv, path, "db")` table source loaded straight
-  into a `Vec<Item>`. After changing an example, regenerate its
+  into a `Vec<Item>`. `csv-list` is the `array`/`csv` list cell type ids
+  on a kv csv file: an `array|` flat list, an `array` default-comma list,
+  an `array|u8` per-element-format list, and a `csv,db` cell holding a
+  whole nested record grid, all deserialized into a `Monster` struct
+  (`Vec<String>` + `Vec<u8>` + `Vec<Attack>`).
+  After changing an example, regenerate its
   `output.log`.
 - `tests/cli.rs` (`#![cfg(feature = "cli")]`) — every folder under
   `tests/cli/<case>/` holds `args.txt` + one `result.*` file compared

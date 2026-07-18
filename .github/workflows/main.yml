@@ -97,10 +97,12 @@ jobs:
       - run: |
           cargo run --manifest-path tools/gen-sheets/Cargo.toml
           git diff --exit-code
+      # every crate under examples/ must reproduce its committed output.log
       - run: |
-          for ex in readme-simple readme-advanced hot-reload csv-header csv-transpose xlsx-sheets csv-db; do
-            echo "== $ex"
-            (cd "examples/$ex" && cargo run --quiet > /tmp/out.log && diff /tmp/out.log output.log)
+          for dir in examples/*/; do
+            [ -f "$dir/Cargo.toml" ] || continue
+            echo "== $dir"
+            (cd "$dir" && cargo run --quiet > /tmp/out.log && diff /tmp/out.log output.log)
           done
 
   publish:
