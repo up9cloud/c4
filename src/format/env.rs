@@ -21,9 +21,11 @@ pub(crate) fn parse(text: &str, options: &Options) -> Result<Value> {
             continue;
         }
         let value = unquote(value.trim());
-        super::deep_merge(
+        super::insert_key(
             &mut root,
-            super::expand_key(key, Value::String(value.to_owned()), options.dot_key),
+            key,
+            Value::String(value.to_owned()),
+            options.dot_key,
         );
     }
     Ok(root)

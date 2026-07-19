@@ -20,7 +20,18 @@ CLI, the examples index, and contributing — and it points at the crate
 docs for everything else. The **crate-level rustdoc** (`src/lib.rs`
 `//!`) is the full user reference: sources & options, Cargo features,
 file formats (so named to keep them apart from the table formats),
-merge rules, tree mode, table formats, custom formats, provenance. Its examples are real doctests and must run under the whole
+merge rules, tree mode, table formats, custom formats, provenance.
+**Readability rules for the crate docs (owner, 2026-07-19):** they focus
+on *usage* — the intro carries no "why c4" pitch, it just links to the
+README for the quick start and positioning; prose stays lean where code
+comments in an example already explain the forms (the sources/options
+example); per-mode/per-option detail lives on the `Options` field
+docs, with the lib-level section reduced to a short intro + a rust
+example + a ref (tree mode and the spreadsheet section are the models:
+the full rules sit on `Options::tree` /
+`Options::ignore_sheet_prefix`/`ignore_hidden_sheets`); and **every
+`Options` field doc carries a rust code block** — runnable when it
+needs no files (value sources, `parse_table`), `no_run` otherwise. Its examples are real doctests and must run under the whole
 feature matrix, so runnable ones use only feature-agnostic pieces
 (custom formats via `parse_table`, 1-tuple value sources, always-on type
 ids); only filesystem-reading `load("config")` snippets are `no_run`.
@@ -45,8 +56,10 @@ tests second, implementation third.
   spreadsheet-native format they can own without touching code. The
   escape-hatch examples (custom formats/layouts) are part of the pitch:
   when the convention doesn't fit, customizing is a documented few-line
-  job, not a fork. README carries this statement; the crate docs open
-  with a condensed form. Wording note (owner, 2026-07-12): the pitch is
+  job, not a fork. README carries this statement; the crate docs do
+  **not** repeat it — their intro links to the README instead (owner,
+  2026-07-19: crate docs focus on usage). Wording note (owner,
+  2026-07-12): the pitch is
   *"ask your AI for bespoke loading code with **zero dependencies**"* —
   the point is no-library beats any library for trivial cases, not that
   the generated code is short.
@@ -288,6 +301,46 @@ The stage interprets a plain row table under a **`TableLayout`**
   `Vec<Vec<String>>` and returns any `Value`. This is how one sheet of
   a workbook gets fully custom treatment (binary formats can't use
   `CustomFormat`, which parses text).
+
+**`dot_key` array segments (2026-07-19).** With `dot_key: true`, a key
+**segment** (between dots) may carry one or more trailing array
+suffixes — `[]` (append) or `[<int>]` (index), chained for nested
+arrays (`a[1][2]`, `g[][]`, `h[0][]` — each suffix is one nesting
+level). The shape rules: the base name before the first `[` must be
+non-empty, every group must be exactly `[]` or `[<digits>]` with the
+digits parsing as `usize` (leading zeros accepted), and the groups must
+run back-to-back to the segment's end. Any violation anywhere makes the
+**whole segment** a literal key (`[]`/`[3]`/`[0][1]` alone — no base,
+`a[x]`, `a[-1]`, `a[]b`, `a[1]x[2]`, `a[[1]]`). The suffixes apply
+everywhere
+`dot_key` applies — env keys, kv layout keys, db key-row columns — also
+on keys without any dot (`ports[]`), and chains through the path
+(`a[0].b[].c`); `dot_key: false` keeps everything literal. Semantics,
+per parse (one file/sheet/string source — across sources arrays still
+replace, merge rule 2):
+
+- `name[]` **appends** one new element per occurrence: each kv row / env
+  line with `a[].b` pushes a new element; in db each `a[].…` **column**
+  pushes per record (`[[a[].b, a[].c], [auto, auto], [1, 2]]` →
+  `[{a: [{b:1}, {c:2}]}]`).
+- `name[<i>]` addresses element `i`, growing the array with `Null`s as
+  needed; the same index deep-merges into the same element
+  (`a[0].b` + `a[0].c` → one object), out-of-order indexes land sorted
+  by index (kv rows `a[0].b`, `a[2].c`, `a[1].c` →
+  `{a: [{b:…}, {c:…}, {c:…}]}`). **Skipped indexes leave `Null` gaps**:
+  `a[1]=1` + `a[4]=4` → `{a: [null, 1, null, null, 4]}` (length 5) —
+  deserialize such an array as `Vec<Option<T>>`.
+- Chained suffixes nest: `m[1][2]=9` → `{m: [null, [null, null, 9]]}`;
+  `g[][]` appends a new inner array per occurrence (`[[1], [2]]`),
+  `h[0][]` appends inside element 0 (`[[1, 2]]`).
+- Kind collisions follow merge rule 2 — the later row wins: an array
+  suffix over a non-array replaces it with an array; a plain segment
+  descending into an array replaces it with an object.
+
+Implementation note: `expand_key` was replaced by
+`insert_key(root, key, value, dot_key)` (`src/format/mod.rs`), which
+walks the existing tree — `[]` append has to see the array built so far,
+so expand-then-merge cannot express it.
 
 Cell typing is shared across layouts: the type ids below, the `bad`
 message shape, and `Error::Table` row numbers (1-based, and real
@@ -580,7 +633,12 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   and db layouts, custom separator, the positional `csvdb`→unknown and
   non-ASCII-separator and unknown-layout errors; array always compiled
   via `parse_table`, csv unknown without the `csv` feature — plus the
-  `csv_list` fixture check), the `CustomFormat` table
+  `csv_list` fixture check), the dot_key array-segment tests (kv
+  index/append/gap + path chains and `a[1][2]` suffix chains + the
+  literal-shape and kind-collision rules + db `[]` columns, all via
+  `parse_table` so they run under every feature set;
+  `env_keys_take_array_suffixes` gated on env; the `csv_array_key`
+  fixture), the `CustomFormat` table
   escape hatches that replace the old `TableOptions` — a header/renamed/
   reordered-columns format and a transposed (column-oriented) format,
   dt/date/time/ip/inet/cidr/mac/uuid typed +
@@ -659,7 +717,14 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   on a kv csv file: an `array|` flat list, an `array` default-comma list,
   an `array|u8` per-element-format list, and a `csv,db` cell holding a
   whole nested record grid, all deserialized into a `Monster` struct
-  (`Vec<String>` + `Vec<u8>` + `Vec<Attack>`).
+  (`Vec<String>` + `Vec<u8>` + `Vec<Attack>`). `dot-key` is the dot_key
+  tour: kv rows with dotted nesting, out-of-order `[<int>]` indexes and
+  `[]` appends into typed structs, a chained-suffix `grid[<i>][<j>]` /
+  `grid[1][]` matrix into `Vec<Vec<u8>>`, and skipped `slots[1]` /
+  `slots[4]` indexes into `Vec<Option<Slot>>` (gaps are `Null`); a db
+  grid with a dotted column, repeated `drops[]` columns and `weak[0].*`
+  columns; an env source showing the arrays-replace-across-sources
+  caveat; and `dot_key: false` keeping brackets literal.
   After changing an example, regenerate its
   `output.log`.
 - `tests/cli.rs` (`#![cfg(feature = "cli")]`) — every folder under

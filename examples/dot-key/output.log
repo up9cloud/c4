@@ -1,0 +1,49 @@
+App {
+    db: Db {
+        host: "localhost",
+        port: 5432,
+    },
+    servers: [
+        Server {
+            host: "alpha",
+            port: 8080,
+        },
+        Server {
+            host: "beta",
+            port: 9090,
+        },
+    ],
+    tags: [
+        "red",
+        "blue",
+    ],
+    grid: [
+        [
+            1,
+            2,
+        ],
+        [
+            3,
+            4,
+        ],
+    ],
+    slots: [
+        None,
+        Some(
+            Slot {
+                name: "sword",
+            },
+        ),
+        None,
+        None,
+        Some(
+            Slot {
+                name: "elixir",
+            },
+        ),
+    ],
+}
+Monster { name: "slime", stats: Stats { atk: 3 }, drops: ["gel", "core"], weak: [Weak { elem: "water", mult: 1.5 }] }
+Monster { name: "wolf", stats: Stats { atk: 7 }, drops: ["fang", "pelt"], weak: [Weak { elem: "fire", mult: 2.0 }] }
+tags after a second source appends tags[]=green: Array([String("green")])
+dot_key off: a.b[0] = String("1")

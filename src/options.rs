@@ -493,16 +493,58 @@ impl PartialEq for CustomFormat {
 pub struct Options {
     /// The ordered config sources; later sources override earlier ones.
     /// Default: the `config` folder under the current working directory.
+    /// Every element converts with `.into()` — see [`Source`] for all
+    /// the accepted shapes.
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         sources: vec![
+    ///             "./config".into(),              // a folder …
+    ///             "./local.yml".into(),           // … or a single file
+    ///             ("yaml", "debug: true").into(), // in-code text
+    ///             (std::collections::BTreeMap::from([("port", 8080)]),).into(),
+    ///         ],
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub sources: Vec<Source>,
     /// Which formats to read and which extensions each one claims. The
     /// list carries **no override-order semantics** — it only builds the
     /// extension→format mapping (if several entries claim the same
     /// extension, the last entry wins the claim). Override order between
     /// files is decided by filename alone; see the merge rules in
-    /// README.md.
+    /// README.md. Entry forms are on [`FormatSpec`].
+    ///
+    /// ```
+    /// let options = c4::Options {
+    ///     formats: vec![
+    ///         "jsonc".into(),                                     // default extensions
+    ///         (c4::Format::Yaml, ["yml", "yaml", "conf"]).into(), // custom extensions
+    ///         (c4::Format::Csv, ["csv"], "db").into(),            // + a table layout
+    ///     ],
+    ///     ..c4::Options::default()
+    /// };
+    /// assert_eq!(options.formats.len(), 3);
+    /// ```
     pub formats: Vec<FormatSpec>,
     /// **Merge mode only** (`tree: false`); folder sources. Scan
     /// subdirectories too. Default `false`.
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // config/base.json and config/prod/db.json both merge in
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         recursive: true,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub recursive: bool,
     /// **Merge mode only**, and only meaningful with
     /// `recursive: true`. `true` (default): subfolder files merge as if
@@ -510,28 +552,168 @@ pub struct Options {
     /// `false`: each subfolder becomes a key and its files merge under
     /// it. (The *filename* never becomes a key in merge mode; for
     /// folder-and-filename keys use tree mode.)
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // config/db/a.json = {"host": "x"} — with flat: false it merges
+    /// // under the subfolder's key instead of the top level
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         recursive: true,
+    ///         flat: false,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// assert_eq!(value["db"]["host"].as_str(), Some("x"));
+    /// # Ok(())
+    /// # }
+    /// ```
     pub flat: bool,
     /// **All modes; env and table formats.** Treat dotted keys as nested
     /// paths: `a.b.c` becomes `{ "a": { "b": { "c": … } } }`.
     /// Default `true`.
+    ///
+    /// In the table stage this applies to both layouts: the `kv`
+    /// layout's key column, and the `db` layout's key row (a dotted
+    /// column nests inside each record).
+    ///
+    /// A key segment may also end in **array suffixes** — `[]` (append)
+    /// and `[<int>]` (index) groups, chained for nested arrays
+    /// (`grid[0][1]`, one level per group); any other bracket shape
+    /// (`a[x]`, `a[-1]`, `a[]b`, a bare `[]`) keeps the whole segment a
+    /// literal key:
+    ///
+    /// - `name[]` **appends** one new element per occurrence: per kv
+    ///   row / env line, and per record for a db column.
+    /// - `name[<int>]` addresses element `<int>`: the same index
+    ///   deep-merges into one element and indexes may arrive in any
+    ///   order. Skipped indexes leave `Null` gaps — `a[1]` + `a[4]`
+    ///   give a five-element array with nulls at 0, 2 and 3;
+    ///   deserialize such arrays as `Vec<Option<T>>`.
+    ///
+    /// Suffixes also chain through the dotted path (`a[0].b[].c`) and
+    /// work on keys without dots (`ports[]`). The expansion happens
+    /// within one parse (one file/sheet/string source) — across sources
+    /// arrays still replace like any array. The `dot-key` example tours
+    /// all of it.
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use c4::{Options, TableLayout};
+    ///
+    /// # fn main() -> Result<(), c4::Error> {
+    /// let options = Options::default(); // dot_key: true
+    ///
+    /// // kv layout: the key column nests
+    /// let rows = vec![vec!["a.b".to_string(), "1".to_string()]];
+    /// let value = c4::parse_table(rows, &TableLayout::Kv, Path::new("doc"), &options)?;
+    /// assert_eq!(value["a"]["b"].as_i64(), Some(1));
+    ///
+    /// // db layout: dotted keys nest inside each record
+    /// let rows = vec![
+    ///     vec!["a.b".to_string(), "a.c".to_string()], // key row
+    ///     vec![String::new(), String::new()],         // type row (all auto)
+    ///     vec!["1".to_string(), "2".to_string()],     // one record
+    /// ];
+    /// let value = c4::parse_table(rows, &TableLayout::Db, Path::new("doc"), &options)?;
+    /// assert_eq!(value[0]["a"]["b"].as_i64(), Some(1));
+    /// assert_eq!(value[0]["a"]["c"].as_i64(), Some(2));
+    ///
+    /// // array suffixes: `[]` appends per row, `[<int>]` indexes
+    /// let rows = vec![
+    ///     vec!["tags[]".to_string(), "red".to_string()],
+    ///     vec!["tags[]".to_string(), "blue".to_string()],
+    ///     vec!["servers[1].host".to_string(), "beta".to_string()],
+    ///     vec!["servers[0].host".to_string(), "alpha".to_string()],
+    /// ];
+    /// let value = c4::parse_table(rows, &TableLayout::Kv, Path::new("doc"), &options)?;
+    /// assert_eq!(value["tags"][1].as_str(), Some("blue"));
+    /// assert_eq!(value["servers"][0]["host"].as_str(), Some("alpha"));
+    ///
+    /// // chained suffixes nest; skipped indexes leave null gaps
+    /// let rows = vec![vec!["m[1][0]".to_string(), "9".to_string()]];
+    /// let value = c4::parse_table(rows, &TableLayout::Kv, Path::new("doc"), &options)?;
+    /// assert!(value["m"][0].is_null());
+    /// assert_eq!(value["m"][1][0].as_i64(), Some(9));
+    /// # Ok(())
+    /// # }
+    /// ```
     pub dot_key: bool,
     /// **All modes.** Case-sensitive key merging. Default `true`; when
     /// `false`, keys are normalized to lowercase. (File-extension
     /// matching is always case-insensitive and unrelated to this
     /// option.)
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    ///
+    /// # fn main() -> Result<(), c4::Error> {
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         sources: vec![
+    ///             (BTreeMap::from([("PORT", 1)]),).into(),
+    ///             (BTreeMap::from([("port", 8080)]),).into(),
+    ///         ],
+    ///         case_sensitive: false, // "PORT" and "port" are one key
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// assert_eq!(value["port"].as_i64(), Some(8080));
+    /// # Ok(())
+    /// # }
+    /// ```
     pub case_sensitive: bool,
     /// **All modes**; folder sources. Load order inside a folder. In
     /// merge mode it decides which file overrides which; in tree mode it
     /// decides key collisions (`a.yml` vs a folder `a/`).
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         order: "alphabetic".into(), // or c4::Order::Alphabetic
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub order: Order,
-    /// **Mode switch** (requires the `tree` feature). `false` (default):
-    /// merge mode — a folder's files deep-merge into one value. `true`:
-    /// tree mode — the folder's *shape* becomes the value: every
-    /// subfolder is a key, and every file is a key named after the file
-    /// (extension stripped) holding that file's parsed content —
-    /// `a/b.json = {c:1}` and `d.json = {a:123}` load as
-    /// `{a: {b: {c: 1}}, d: {a: 123}}`. Tree mode is always recursive;
-    /// `recursive` and `flat` do not apply to it.
+    /// **Mode switch** (requires the `tree` feature; `true` without it
+    /// is `Error::Unsupported`). `false` (default): merge mode — a
+    /// folder's files deep-merge into one value. `true`: tree mode — the
+    /// folder's *shape* becomes the value: every subfolder is a key, and
+    /// every file is a key named after the file (extension stripped)
+    /// holding that file's parsed content — `a/b.json = {c:1}` and
+    /// `d.json = {a:123}` load as `{a: {b: {c: 1}}, d: {a: 123}}`.
+    ///
+    /// The rules, in full:
+    /// - Applies to **folder path sources** only; single-file and string
+    ///   sources merge into the root as always.
+    /// - Always recursive — `recursive` and `flat` do not apply, but
+    ///   `order` does: entries load in order, and a key collision
+    ///   (`a.yml` next to a folder `a/`) deep-merges, so order decides
+    ///   the winner.
+    /// - A dotfile whose whole name is its extension (`.env`) keeps the
+    ///   full name as its key.
+    /// - Extension handling: a claimed extension parses normally; an
+    ///   extension-less file follows [`auto_files`](Options::auto_files);
+    ///   any other unclaimed extension follows
+    ///   [`ignore_unknown_ext`](Options::ignore_unknown_ext).
+    /// - A spreadsheet workbook parses to an object keyed by sheet name,
+    ///   so its sheets become keys under the file's key — `a/b.xlsx`
+    ///   with sheets `c`, `d` loads as `{a: {b: {c: …, d: …}}}`.
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // config/a/b.json = {"c": 1}  ->  {a: {b: {c: 1}}}
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         tree: true,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// assert_eq!(value["a"]["b"]["c"].as_i64(), Some(1));
+    /// # Ok(())
+    /// # }
+    /// ```
     pub tree: bool,
     /// **Tree mode only.** What to do with a file that has *no*
     /// extension. `true` (default): read it and guess the type of its
@@ -540,21 +722,77 @@ pub struct Options {
     /// string otherwise. `false`: treat it like a file with an unknown
     /// extension (see [`ignore_unknown_ext`](Options::ignore_unknown_ext)).
     /// (Named `auto_files` after the table `auto` type id it reuses.)
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // tree mode: config/host is an extension-less file holding "1.1.1.1"
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         tree: true,
+    ///         auto_files: true,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// assert!(!value["host"].is_null());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub auto_files: bool,
     /// **Tree mode only.** What to do with a file whose extension no
     /// active format claims: skip it (`true`, default) or fail the load
     /// with `Error::Parse` (`false`). Merge mode always skips such
     /// files.
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         tree: true,
+    ///         ignore_unknown_ext: false, // a config/*.xyz file now errors
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub ignore_unknown_ext: bool,
     /// **Spreadsheet formats (excel/ods) only.** Skip sheets whose name
     /// starts with `#`, `.` or `_` — draft/scratch space next to live
     /// config. Default `true`. (A table source that names a sheet
-    /// explicitly bypasses this filter.)
+    /// explicitly bypasses this filter, so a prefixed sheet stays
+    /// loadable on purpose.)
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // tree mode: game.xlsx has sheets "items" and "_draft"; by
+    /// // default "_draft" is skipped — false reads it as a key too
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         sources: vec!["./game.xlsx".into()],
+    ///         tree: true,
+    ///         ignore_sheet_prefix: false,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// assert!(!value["_draft"].is_null());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub ignore_sheet_prefix: bool,
     /// **Spreadsheet formats (excel/ods) only.** Skip sheets marked
     /// hidden in the workbook (Excel `hidden`/`veryHidden`, OpenDocument
     /// `table:display="false"`). Default `true`. (A table source that
     /// names a sheet explicitly bypasses this filter.)
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // the workbook's `config` sheet is marked hidden — read it anyway
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         sources: vec!["./game.xlsx".into()],
+    ///         ignore_hidden_sheets: false,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub ignore_hidden_sheets: bool,
 }
 

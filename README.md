@@ -143,6 +143,7 @@ cd examples/00_simple && cargo run
 | [`csv-header`](examples/csv-header) | reshaping a CSV with a `CustomFormat` (header + renamed/reordered columns) |
 | [`csv-list`](examples/csv-list) | single cells expanded into lists via the `array` / `csv` type ids |
 | [`csv-transpose`](examples/csv-transpose) | a column-oriented CSV transposed into rows with a `CustomFormat` |
+| [`dot-key`](examples/dot-key) | everything `dot_key` does — dotted nesting plus `name[]` / `name[<int>]` array keys |
 | [`hot-reload`](examples/hot-reload) | DIY hot-reload — watch the folder with `notify`, re-run `load()` |
 | [`xlsx-sheets`](examples/xlsx-sheets) | one Excel workbook, a different table layout per sheet |
 

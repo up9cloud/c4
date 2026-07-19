@@ -1,0 +1,7 @@
+{
+  "servers": [
+    { "host": "alpha", "port": 8080 },
+    { "host": "beta", "port": 9090 }
+  ],
+  "tags": ["red", "blue"]
+}

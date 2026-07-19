@@ -4,19 +4,10 @@
 //! formats' cells (csv and spreadsheet sheets) carry typed values, and
 //! every value can be traced to the source it came from.
 //!
-//! What c4 offers is less a parser than a **convention** (in the spirit of
-//! node-config): deterministic override order, deep merge, and a
-//! `key,value[,format]` table rule that lets non-programmers own config in
-//! CSV or Excel/OpenDocument spreadsheets — plus documented custom-format
-//! escape hatches for everything else. If all you need is one simple file
-//! read once, bespoke zero-dependency loading code (your AI writes it) is
-//! lighter than any library; c4 earns its place when a team needs shared
-//! rules.
-//!
-//! The [README] is the quick start; this page is the full reference (and
-//! `CLAUDE.md` in the repo is the exhaustive spec). Most examples below run
-//! without any files — they load in-code string and value sources; only
-//! the `load("config")` snippets, which read the caller's filesystem, are
+//! This page is the usage reference; the [README] has the quick start
+//! and the "why c4" positioning. Most examples below run without any
+//! files — they load in-code string and value sources; only the
+//! `load("config")` snippets, which read the caller's filesystem, are
 //! marked `no_run`.
 //!
 //! [README]: https://github.com/up9cloud/c4#readme
@@ -44,16 +35,9 @@
 //!
 //! Everything goes through one plain-data [`Options`]; [`Loader`] has
 //! exactly [`new`](Loader::new), [`load`](Loader::load) and
-//! [`trace`](Loader::trace). You never name [`Source`]: `sources` is a
-//! `Vec<Source>` and each element converts with `.into()` — a path-like
-//! value (`&str`/`String`/`&Path`/`PathBuf`) is a folder/file source, a
-//! `(format, text)` tuple is an in-code string source, a **1-tuple**
-//! `(value,)` wraps any serde type as a typed override (the trailing comma
-//! is what keeps it distinct — see [`Source`]), and a
-//! `(format, path, layout)` / `(format, path, sheet, layout)` tuple is a
-//! **table source** — one csv/excel/ods file read under an explicit
-//! [`TableLayout`]; naming a spreadsheet sheet is always the 4-tuple
-//! (see *Table formats* below).
+//! [`trace`](Loader::trace). You never name [`Source`]: every `sources`
+//! element converts with `.into()`, and its shape picks the source kind
+//! — the comments below show every form, [`Source`] has the details:
 //!
 //! ```no_run
 //! use std::path::Path;
@@ -68,14 +52,15 @@
 //! # fn main() -> Result<(), c4::Error> {
 //! let value: c4::Value = Loader::new(Options {
 //!         sources: vec![
-//!             "./config".into(),                              // a folder (or a single file)
+//!             // Path-like values are folders or files
+//!             "./config".into(),                              // a folder
+//!             "./local.yml".into(),                           // or a single file
 //!             Path::new("/etc/myapp").into(),                 // any path-like type
-//!             "./local.yml".into(),
-//!             ("jsonc", r#"{ "note": "from code" }"#).into(), // string source, by format id
-//!             (Format::Toml, "debug = true").into(),          // string source, by Format
-//!             (Overrides { debug: true },).into(),            // typed override (1-tuple)
-//!             (Format::Csv, "./items.csv", "db").into(),      // table source: file + layout
-//!             (Format::Excel, "./game.xlsx", "drops", "db").into(), // sheet + layout (4-tuple)
+//!             (Overrides { debug: true },).into(),            // (1-tuple) typed override
+//!             ("jsonc", r#"{ "note": "from code" }"#).into(), // (2-tuple) format id with string source
+//!             (Format::Toml, "debug = true").into(),          // (2-tuple) Format with string source
+//!             ("csv", "./items.csv", "db").into(),            // (3-tuple) table source: format + file + layout
+//!             (Format::Excel, "./game.xlsx", "drops", "db").into(), // (4-tuple) multiple tables: Format + file + sheet + layout
 //!         ],
 //!         // which formats read which extensions; the last claimer wins.
 //!         // all conversion forms — id/Format × default/custom exts,
@@ -95,8 +80,25 @@
 //! # }
 //! ```
 //!
-//! Sources merge in the order given — later overrides earlier — whatever
-//! their kind:
+//! Every field is documented on [`Options`], each stating up front the
+//! mode/format it applies to.
+//!
+//! # Merge order and custom formats
+//!
+//! The merge rules, whatever the source kind:
+//!
+//! 1. Sources merge in the order given; later overrides earlier.
+//! 2. Within a folder, entries load in `order` and deep-merge: objects
+//!    merge recursively, arrays and scalars replace.
+//! 3. Override order between files is decided by **filename alone**, never
+//!    by format: `app.json` and `app.yml` sort by name, so `app.yml` loads
+//!    later and wins. Prefix filenames (`00_a.json`, `01_a.yml`) for
+//!    explicit control.
+//!
+//! A [`CustomFormat`] is an id, the extensions it claims, and a parser
+//! callback. It goes into `Options.formats` like any built-in — one list,
+//! one claim order — and a string source can name one directly. See
+//! [`CustomFormat`] for a full markdown-pipe-table example.
 //!
 //! ```
 //! use c4::{CustomFormat, Loader, Options};
@@ -125,13 +127,6 @@
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! Every [`Options`] field is documented on the struct. In brief:
-//! `sources`, `formats`, `recursive`, `flat` (merge-mode subfolder
-//! nesting), `dot_key`, `case_sensitive`, `order` (an [`Order`] or an id
-//! like `"alphabetic".into()`), the tree-mode trio `tree`,
-//! `auto_files`, `ignore_unknown_ext`, and the spreadsheet pair
-//! `ignore_sheet_prefix`, `ignore_hidden_sheets`.
 //!
 //! # Cargo features
 //!
@@ -183,31 +178,33 @@
 //! | `excel` | `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | `excel` |
 //! | `ods`   | `.ods`             | `ods`   |
 //!
-//! # Merge rules
-//!
-//! 1. Sources merge in the order given; later overrides earlier.
-//! 2. Within a folder, entries load in `order` and deep-merge: objects
-//!    merge recursively, arrays and scalars replace.
-//! 3. Override order between files is decided by **filename alone**, never
-//!    by format: `app.json` and `app.yml` sort by name, so `app.yml` loads
-//!    later and wins. Prefix filenames (`00_a.json`, `01_a.yml`) for
-//!    explicit control.
-//!
 //! # Tree mode
 //!
-//! With `Options { tree: true, .. }` (feature `tree`) a folder is not
-//! merged — its shape becomes the config: every subfolder is a key, and
-//! every file a key named after it (extension stripped):
+//! With `tree: true` (feature `tree`) a folder is not merged — its shape
+//! becomes the config: every subfolder is a key, and every file a key
+//! named after it (extension stripped):
 //!
 //! ```text
 //! config/a/b.json = {"c": 1}   ->  { "a": { "b": { "c": 1 } },
 //! config/d.json   = {"a": 123}       "d": { "a": 123 } }
 //! ```
 //!
-//! Tree mode is always recursive; `order` decides key collisions (`a.yml`
-//! next to a folder `a/`). Extension-less files are auto-detected from
-//! their content when `auto_files` is set; files with unknown extensions
-//! are skipped unless `ignore_unknown_ext` is `false`.
+//! ```no_run
+//! # fn main() -> Result<(), c4::Error> {
+//! let value: c4::Value = c4::Loader::new(c4::Options {
+//!         sources: vec!["./config".into()],
+//!         tree: true,
+//!         ..c4::Options::default()
+//!     })
+//!     .load()?;
+//! assert_eq!(value["a"]["b"]["c"].as_i64(), Some(1));
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The full rules — recursion, key collisions, extension handling — are
+//! on [`Options::tree`] (with [`Options::auto_files`] and
+//! [`Options::ignore_unknown_ext`] for the edge cases).
 //!
 //! # Table formats
 //!
@@ -233,25 +230,48 @@
 //!   cells after the header and delegate to `db` (see the `xlsx-sheets`
 //!   example).
 //!
-//! ```text
-//! sources: vec![
-//!     (Format::Csv,   "items.csv", "db").into(),          // layout per file
-//!     (Format::Excel, "game.xlsx", "config", "kv").into(),// sheet + layout (4-tuple)
-//! ]
-//! formats: vec![
-//!     (Format::Csv, ["csv"], "db").into(),   // or per extension: every
-//! ]                                          // claimed csv file is a grid
+//! The layout comes from a table-source tuple or a `formats` entry (the
+//! forms are in the sources example above; details on [`Source`]). The
+//! db layout on a plain csv file loads a record grid straight into a
+//! `Vec<T>` (the `csv-db` example):
+//!
+//! ```no_run
+//! use c4::{Format, Loader, Options};
+//!
+//! #[derive(serde::Deserialize)]
+//! struct Item {
+//!     id: u32,
+//!     name: String,
+//!     price: f64,
+//! }
+//!
+//! # fn main() -> Result<(), c4::Error> {
+//! // items.csv:          key row
+//! //   id,name,price
+//! //   u32,str,f64       type row (a cell may be empty = auto)
+//! //   1,sword,10.5      one record per row
+//! //   2,shield,7
+//! let items: Vec<Item> = Loader::new(Options {
+//!         sources: vec![(Format::Csv, "items.csv", "db").into()],
+//!         ..Options::default()
+//!     })
+//!     .load()?;
+//! # Ok(())
+//! # }
 //! ```
 //!
-//! The 3-tuple's third element is **always the layout** (it suits csv,
-//! where the file is the table); naming a spreadsheet sheet is always
-//! the 4-tuple, which names the layout explicitly too. Two db sources
-//! do not concatenate: arrays replace like any array.
+//! Two db sources do not concatenate: arrays replace like any array.
 //!
 //! Rows map keys to values **positionally** (in `kv`: col 0 = key,
 //! col 1 = value, col 2 = format; in `db`: the type row types its
-//! column). The **format** of a cell is one of the ids below — the
-//! column/row is optional, and a missing or empty format means `auto`:
+//! column). With [`Options::dot_key`] (default on) a dotted key nests in
+//! both layouts — a kv row `a.b,1` gives `{a:{b:1}}`, and a db
+//! `stats.atk` column nests inside each record — and a `name[]` /
+//! `name[<int>]` segment builds an **array** (append / index, suffixes
+//! chain for nested arrays; see [`Options::dot_key`] and the `dot-key`
+//! example). The **format** of a
+//! cell is one of the ids below — the column/row is optional, and a
+//! missing or empty format means `auto`:
 //!
 //! | Cell format | Aliases | Cargo feature | Notes |
 //! | ----------- | ------- | ------------- | ----- |
@@ -265,9 +285,9 @@
 //! | `dt` | `datetime` | `datetime` | `YYYY-MM-DD`, optional time part |
 //! | `date`, `time` | — | same-named | `YYYY-MM-DD` / `hh:mm:ss[.frac]` |
 //! | `ipv4`, `ipv6` | — | same-named | IP addresses |
-//! | `inet`, `cidr` | — | `inet`, `cidr` | PostgreSQL inet/cidr shapes (optional/required netmask) |
+//! | `inet`, `cidr` | — | same-named | PostgreSQL inet/cidr shapes (optional/required netmask) |
 //! | `macaddr`, `macaddr8` | — | same-named | the PostgreSQL MAC spellings |
-//! | `uuid` | — | `uuid` | hyphenated or bare 32-hex |
+//! | `uuid` | — | same-named | hyphenated or bare 32-hex |
 //! | `json`, `jsonc` | — | same-named | a whole document in one cell, parsed by exactly that format's parser |
 //! | `array<sep><format>` | — | — | splits the cell into a flat list by `sep` (default `,`), each element parsed by `format` (default `auto`): `array\|` on `1\|2\|3` → `[1,2,3]`, `array\|u8` types them `u8`, `array\|str` keeps `["1","2","3"]` |
 //! | `csv<sep><layout>` | — | `csv` | parses the whole cell as a CSV document (delimiter `sep`, default `,`) under `layout` (default `kv`): `csv,kv` → object, `csv,db` → array of objects |
@@ -320,44 +340,50 @@
 //!
 //! # Spreadsheet formats
 //!
-//! `excel` (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`) and `ods` (`.ods`)
-//! read workbooks as table formats: each sheet is the same positional
-//! `key,value[,format]` table as csv, anchored at cell A1 (column A =
-//! key, B = value, C = optional type id; error messages carry real
-//! spreadsheet row numbers). Numbers, booleans and date-formatted cells
-//! convert to the text the table stage expects, so a `dt`/`date`/`time`
-//! format column works on real spreadsheet dates.
+//! `excel` (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`) and `ods` (`.ods`) read
+//! workbooks as table formats: each sheet is a grid anchored at cell A1,
+//! lowered to rows for the table stage — **db record grids by default**
+//! ([`Format::default_layout`]). Numbers, booleans and date-formatted
+//! cells convert to the text the stage expects (a `dt`/`date`/`time`
+//! column works on real spreadsheet dates), and error messages carry
+//! real spreadsheet row numbers. Both are binary formats, so they load
+//! from files only — a `(Format::Excel, text)` string source is an
+//! error.
 //!
-//! Sheets parse as **db record grids by default**
-//! ([`Format::default_layout`]) — name a layout in a table source or a
-//! `formats` entry for anything else. Which sheets are read:
+//! Which sheets are read:
 //!
-//! - `tree: false` (default): exactly the sheet named `config`; every
-//!   other sheet is ignored, and a workbook without a `config` sheet
-//!   contributes nothing — so extra sheets are free working space.
-//! - `tree: true`: every sheet becomes a key under the file's key —
-//!   `a/b.xlsx` with sheets `c`, `d` loads as `{a: {b: {c: …, d: …}}}`.
-//! - Sheets whose name starts with `#`, `.` or `_` are skipped
-//!   ([`Options::ignore_sheet_prefix`]), and so are sheets hidden in the
-//!   workbook ([`Options::ignore_hidden_sheets`]) — both default `true`,
-//!   giving planners draft/scratch space next to live config.
+//! - `tree: false` (default): exactly the sheet named `config`; a
+//!   workbook without one contributes nothing.
+//! - `tree: true`: every sheet becomes a key under the file's key — see
+//!   [`Options::tree`].
+//! - Prefixed (`#`/`.`/`_`) and hidden sheets are skipped — see
+//!   [`Options::ignore_sheet_prefix`] and
+//!   [`Options::ignore_hidden_sheets`].
+//! - A table source that names a sheet (always the 4-tuple) reads
+//!   exactly that sheet and merges it under the sheet name as key — see
+//!   [`Source`]:
 //!
-//! - A **table source that names a sheet** —
-//!   `(Format::Excel, "game.xlsx", "items", "db").into()` — reads exactly
-//!   that sheet (even a prefixed/hidden one; a missing sheet is an
-//!   error) and merges it **under the sheet name as key**, so several
-//!   sources can each give one sheet of the same workbook its own
-//!   layout. The `xlsx-sheets` example composes five sheets this way.
+//! ```no_run
+//! use c4::{Format, Loader, Options};
 //!
-//! Both are binary formats, so they load from files only — a
-//! `(Format::Excel, text)` string source is an error.
+//! # fn main() -> Result<(), c4::Error> {
+//! // game.xlsx: sheet "items" is a record grid, "settings" is kv rows
+//! let value: c4::Value = Loader::new(Options {
+//!         sources: vec![
+//!             (Format::Excel, "game.xlsx", "items", "db").into(),
+//!             (Format::Excel, "game.xlsx", "settings", "kv").into(),
+//!         ],
+//!         ..Options::default()
+//!     })
+//!     .load()?;
+//! assert!(value["items"][0]["id"].as_u64().is_some());
+//! assert!(!value["settings"].is_null());
+//! # Ok(())
+//! # }
+//! ```
 //!
-//! # Custom formats
-//!
-//! A [`CustomFormat`] is an id, the extensions it claims, and a parser
-//! callback. It goes into `Options.formats` like any built-in — one list,
-//! one claim order — and a string source can name one directly. See
-//! [`CustomFormat`] for a full markdown-pipe-table example.
+//! The `xlsx-sheets` example composes five sheets of one workbook this
+//! way, `CustomLayout`s included.
 //!
 //! # Provenance
 //!

@@ -79,7 +79,7 @@ fn kv(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
             .ok_or_else(|| table_err(path, row, "missing value cell".into()))?;
         let declared = cells.get(2).map(|s| s.trim()).unwrap_or("");
         let value = convert(raw, declared, path, row, options)?;
-        super::deep_merge(&mut root, super::expand_key(key, value, options.dot_key));
+        super::insert_key(&mut root, key, value, options.dot_key);
     }
     Ok(root)
 }
@@ -145,7 +145,7 @@ fn db(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
             };
             let declared = types.get(column).map(String::as_str).unwrap_or("");
             let value = convert(raw, declared, path, row, options)?;
-            super::deep_merge(&mut record, super::expand_key(key, value, options.dot_key));
+            super::insert_key(&mut record, key, value, options.dot_key);
         }
         records.push(record);
     }

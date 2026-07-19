@@ -1,0 +1,4 @@
+name,stats.atk,drops[],drops[],weak[0].elem,weak[0].mult
+str,u32,str,str,str,f64
+slime,3,gel,core,water,1.5
+wolf,7,fang,pelt,fire,2

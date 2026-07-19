@@ -1,0 +1,14 @@
+db.host,localhost
+db.port,5432,u16
+servers[1].host,beta
+servers[1].port,9090,u16
+servers[0].host,alpha
+servers[0].port,8080,u16
+tags[],red
+tags[],blue
+grid[0][0],1,u8
+grid[0][1],2,u8
+grid[1][],3,u8
+grid[1][],4,u8
+slots[1].name,sword
+slots[4].name,elixir

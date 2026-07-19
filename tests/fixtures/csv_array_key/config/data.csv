@@ -1,0 +1,6 @@
+servers[0].host,alpha
+servers[0].port,8080,u16
+servers[1].host,beta
+servers[1].port,9090,u16
+tags[],red
+tags[],blue

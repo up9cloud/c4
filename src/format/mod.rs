@@ -168,19 +168,101 @@ pub(crate) fn from_serde_json(value: serde_json::Value) -> Value {
     }
 }
 
-/// Wrap `value` under `key`, expanding `a.b.c` into nested objects when
-/// `dot_key` is on (env and table formats).
-pub(crate) fn expand_key(key: &str, value: Value, dot_key: bool) -> Value {
-    use std::collections::BTreeMap;
-    if dot_key && key.contains('.') {
-        let mut value = value;
-        for part in key.split('.').rev() {
-            value = Value::Object(BTreeMap::from([(part.to_owned(), value)]));
-        }
-        value
-    } else {
-        Value::Object(std::collections::BTreeMap::from([(key.to_owned(), value)]))
+/// One array suffix of a dot_key segment: `[]` (append) or `[<int>]`
+/// (index).
+enum ArrayPart {
+    Append,
+    Index(usize),
+}
+
+/// Split one dot_key segment into its base name and chained array
+/// suffixes. Only the exact shape addresses arrays: a non-empty base
+/// name, then one or more back-to-back `[]` / `[<digits>]` groups
+/// (indexes fitting `usize`) running to the segment's end — each group
+/// is one nesting level (`a[1][2]`). Any violation anywhere makes the
+/// whole segment a literal key (`None`).
+fn split_segment(segment: &str) -> Option<(&str, Vec<ArrayPart>)> {
+    let open = segment.find('[')?;
+    let base = &segment[..open];
+    if base.is_empty() {
+        return None;
     }
+    let mut parts = Vec::new();
+    let mut rest = &segment[open..];
+    while !rest.is_empty() {
+        let inner = rest.strip_prefix('[')?;
+        let (digits, after) = inner.split_once(']')?;
+        if digits.is_empty() {
+            parts.push(ArrayPart::Append);
+        } else if digits.bytes().all(|b| b.is_ascii_digit()) {
+            parts.push(ArrayPart::Index(digits.parse().ok()?));
+        } else {
+            return None;
+        }
+        rest = after;
+    }
+    Some((base, parts))
+}
+
+/// Merge `value` into `root` under `key` (env and table formats). With
+/// `dot_key` on, `a.b.c` expands into nested objects and a segment's
+/// array suffixes address arrays — `name[]` appends one new element
+/// per occurrence, `name[<int>]` addresses that element, growing the
+/// array with `Null`s, and chained suffixes nest (see
+/// [`split_segment`]). This walks the tree built so far instead of
+/// expand-then-merge because append has to see the existing array.
+/// With `dot_key` off the whole key is one literal object key.
+pub(crate) fn insert_key(root: &mut Value, key: &str, value: Value, dot_key: bool) {
+    if dot_key {
+        insert_segments(root, key.split('.'), value);
+    } else {
+        deep_merge(
+            root,
+            Value::Object(std::collections::BTreeMap::from([(key.to_owned(), value)])),
+        );
+    }
+}
+
+fn insert_segments<'a>(
+    slot: &mut Value,
+    mut segments: impl Iterator<Item = &'a str>,
+    value: Value,
+) {
+    let Some(segment) = segments.next() else {
+        deep_merge(slot, value);
+        return;
+    };
+    // a segment's base name lives in an object; on a kind collision the
+    // later row wins (merge rule 2), so anything else is replaced
+    if !matches!(slot, Value::Object(_)) {
+        *slot = Value::Object(Default::default());
+    }
+    let Value::Object(entries) = slot else {
+        unreachable!()
+    };
+    let (name, parts) = match split_segment(segment) {
+        Some((name, parts)) => (name, parts),
+        None => (segment, Vec::new()), // literal key, no array suffixes
+    };
+    let mut target = entries.entry(name.to_owned()).or_insert(Value::Null);
+    for part in parts {
+        // each suffix descends one array level
+        if !matches!(target, Value::Array(_)) {
+            *target = Value::Array(Vec::new());
+        }
+        let Value::Array(items) = target else {
+            unreachable!()
+        };
+        let index = match part {
+            ArrayPart::Append => items.len(),
+            ArrayPart::Index(index) => index,
+        };
+        while items.len() <= index {
+            items.push(Value::Null); // unfilled gaps stay Null
+        }
+        target = &mut items[index];
+    }
+    insert_segments(target, segments, value);
 }
 
 /// Plain-value deep merge (objects recurse, everything else replaces) —

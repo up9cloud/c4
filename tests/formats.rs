@@ -1322,3 +1322,192 @@ fn csv_type_id_without_csv_feature_is_unknown() {
     .unwrap_err();
     assert!(matches!(err, c4::Error::Table { row: 1, .. }));
 }
+
+// ---- dot_key array segments: `name[]` appends, `name[<int>]` indexes ----
+// `parse_table` is always compiled, so these run under every feature set.
+
+fn kv_rows(rows: &[[&str; 2]], options: &c4::Options) -> c4::Value {
+    let rows = rows
+        .iter()
+        .map(|row| row.iter().map(|cell| cell.to_string()).collect())
+        .collect();
+    c4::parse_table(
+        rows,
+        &c4::TableLayout::Kv,
+        std::path::Path::new("mem"),
+        options,
+    )
+    .unwrap()
+}
+
+#[test]
+fn kv_index_keys_build_a_sorted_array() {
+    let value = kv_rows(
+        &[["a[0].b", "1"], ["a[2].c", "3"], ["a[1].c", "2"]],
+        &c4::Options::default(),
+    );
+    assert_eq!(value["a"].as_array().unwrap().len(), 3);
+    assert_eq!(value["a"][0]["b"].as_i64(), Some(1));
+    assert_eq!(value["a"][1]["c"].as_i64(), Some(2));
+    assert_eq!(value["a"][2]["c"].as_i64(), Some(3));
+}
+
+#[test]
+fn kv_append_keys_push_one_element_per_row() {
+    let value = kv_rows(
+        &[
+            ["ports[]", "80"],
+            ["ports[]", "443"],
+            ["servers[].host", "a"],
+            ["servers[].host", "b"],
+        ],
+        &c4::Options::default(),
+    );
+    assert_eq!(
+        value["ports"],
+        c4::Value::Array(vec![c4::Value::Int(80), c4::Value::Int(443)])
+    );
+    // each `[]` occurrence appends — two rows give two elements, they
+    // never merge into one
+    assert_eq!(value["servers"].as_array().unwrap().len(), 2);
+    assert_eq!(value["servers"][0]["host"].as_str(), Some("a"));
+    assert_eq!(value["servers"][1]["host"].as_str(), Some("b"));
+}
+
+#[test]
+fn kv_same_index_deep_merges_into_one_element() {
+    let value = kv_rows(&[["a[0].b", "1"], ["a[0].c", "2"]], &c4::Options::default());
+    assert_eq!(value["a"].as_array().unwrap().len(), 1);
+    assert_eq!(value["a"][0]["b"].as_i64(), Some(1));
+    assert_eq!(value["a"][0]["c"].as_i64(), Some(2));
+}
+
+#[test]
+fn kv_index_gaps_stay_null() {
+    // skipped indexes leave Null gaps: a[1] + a[4] → 5 elements —
+    // deserialize such arrays as Vec<Option<T>>
+    let value = kv_rows(&[["a[1]", "1"], ["a[4]", "4"]], &c4::Options::default());
+    assert_eq!(
+        value["a"],
+        c4::Value::Array(vec![
+            c4::Value::Null,
+            c4::Value::Int(1),
+            c4::Value::Null,
+            c4::Value::Null,
+            c4::Value::Int(4),
+        ])
+    );
+    // leading zeros parse as the same index
+    let value = kv_rows(&[["b[01]", "5"]], &c4::Options::default());
+    assert_eq!(value["b"][1].as_i64(), Some(5));
+    assert!(value["b"][0].is_null());
+}
+
+#[test]
+fn kv_chained_suffixes_nest_arrays() {
+    // each suffix is one nesting level: m[1][2] → {m: [null, [null, null, 9]]}
+    let value = kv_rows(&[["m[1][2]", "9"]], &c4::Options::default());
+    assert!(value["m"][0].is_null());
+    assert_eq!(value["m"][1][2].as_i64(), Some(9));
+    // g[][] appends a new inner array per occurrence
+    let value = kv_rows(&[["g[][]", "1"], ["g[][]", "2"]], &c4::Options::default());
+    assert_eq!(value["g"][0][0].as_i64(), Some(1));
+    assert_eq!(value["g"][1][0].as_i64(), Some(2));
+    // h[0][] appends inside element 0
+    let value = kv_rows(&[["h[0][]", "1"], ["h[0][]", "2"]], &c4::Options::default());
+    assert_eq!(value["h"][0][0].as_i64(), Some(1));
+    assert_eq!(value["h"][0][1].as_i64(), Some(2));
+    // chains keep walking the dotted path
+    let value = kv_rows(&[["m[0][0].v", "5"]], &c4::Options::default());
+    assert_eq!(value["m"][0][0]["v"].as_i64(), Some(5));
+}
+
+#[test]
+fn kv_suffixes_chain_through_the_path() {
+    let value = kv_rows(
+        &[["a[0].b[].c", "1"], ["a[0].b[].c", "2"]],
+        &c4::Options::default(),
+    );
+    assert_eq!(value["a"][0]["b"][0]["c"].as_i64(), Some(1));
+    assert_eq!(value["a"][0]["b"][1]["c"].as_i64(), Some(2));
+}
+
+#[test]
+fn only_valid_suffix_shapes_make_arrays() {
+    let options = c4::Options::default();
+    for key in [
+        "[]",
+        "[3]",
+        "[0][1]", // no base name
+        "a[x]",
+        "a[-1]",
+        "a[]b",
+        "a[1]x[2]", // groups must run back-to-back to the end
+        "a[[1]]",
+        "a[99999999999999999999]", // does not fit usize
+    ] {
+        let value = kv_rows(&[[key, "1"]], &options);
+        // the whole segment stays a literal object key
+        assert_eq!(value[key].as_i64(), Some(1), "key {key:?}");
+    }
+}
+
+#[test]
+fn dot_key_off_keeps_array_suffixes_literal() {
+    let options = c4::Options {
+        dot_key: false,
+        ..c4::Options::default()
+    };
+    let value = kv_rows(&[["a[].b", "1"], ["a[0]", "2"]], &options);
+    assert_eq!(value["a[].b"].as_i64(), Some(1));
+    assert_eq!(value["a[0]"].as_i64(), Some(2));
+}
+
+#[test]
+fn array_kind_collisions_later_row_wins() {
+    // an array suffix over a non-array replaces it with an array
+    let value = kv_rows(&[["a.b", "1"], ["a[]", "2"]], &c4::Options::default());
+    assert_eq!(value["a"], c4::Value::Array(vec![c4::Value::Int(2)]));
+    // a plain segment descending into an array replaces it with an object
+    let value = kv_rows(&[["a[]", "1"], ["a.b", "2"]], &c4::Options::default());
+    assert_eq!(value["a"]["b"].as_i64(), Some(2));
+}
+
+#[test]
+fn db_append_columns_push_per_record() {
+    let rows: Vec<Vec<String>> = vec![
+        vec!["a[].b".into(), "a[].c".into()],
+        vec![String::new(), String::new()], // type row: all auto
+        vec!["1".into(), "2".into()],
+        vec!["3".into(), "4".into()],
+    ];
+    let value = c4::parse_table(
+        rows,
+        &c4::TableLayout::Db,
+        std::path::Path::new("mem"),
+        &c4::Options::default(),
+    )
+    .unwrap();
+    // each record grows its own array — one element per `[]` column
+    assert_eq!(value[0]["a"][0]["b"].as_i64(), Some(1));
+    assert_eq!(value[0]["a"][1]["c"].as_i64(), Some(2));
+    assert_eq!(value[1]["a"][0]["b"].as_i64(), Some(3));
+    assert_eq!(value[1]["a"][1]["c"].as_i64(), Some(4));
+}
+
+#[cfg(feature = "env")]
+#[test]
+fn env_keys_take_array_suffixes() {
+    let value: c4::Value = common::loader(vec![("env", "A[]=1\nA[]=2\nB[0].C=x").into()])
+        .load()
+        .unwrap();
+    assert_eq!(value["A"][0].as_str(), Some("1")); // env values stay strings
+    assert_eq!(value["A"][1].as_str(), Some("2"));
+    assert_eq!(value["B"][0]["C"].as_str(), Some("x"));
+}
+
+#[cfg(feature = "csv")]
+#[test]
+fn csv_array_key() {
+    common::check("csv_array_key", c4::Options::default());
+}

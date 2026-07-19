@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "$id": "Leaf",
+    "value": [
+      { "host": "alpha", "port": 8080 },
+      { "host": "beta", "port": 9090 }
+    ],
+    "source": "tests/fixtures/csv_array_key/config/data.csv",
+    "format": "arr"
+  },
+  "tags": {
+    "$id": "Leaf",
+    "value": ["red", "blue"],
+    "source": "tests/fixtures/csv_array_key/config/data.csv",
+    "format": "arr:str"
+  }
+}
