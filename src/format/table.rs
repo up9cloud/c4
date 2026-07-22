@@ -525,6 +525,40 @@ fn clean_literal(raw: &str) -> Option<(String, bool)> {
     Some((s, bigint))
 }
 
+/// The relaxed-form fallback for **explicit** numeric ids (never `auto`):
+/// after the standard literal parse fails, try hard to recover a number
+/// from human/spreadsheet notation — thousands separators (`1,000.1`,
+/// `10 234 345.111`), a currency prefix (`$123.12`, `€ £ ¥`) and
+/// fullwidth digits. The steps (owner, 2026-07-22): (a) map fullwidth
+/// digits `０-９` to `0-9`, then (b) keep only ASCII digits, the **last**
+/// `.` (the decimal point) and the **first** `-` (the sign), dropping
+/// everything else. The caller then parses the result under its own type.
+/// `None` when nothing digit-like survives.
+#[cfg(feature = "numeric")]
+fn relaxed_numeric(raw: &str) -> Option<String> {
+    let converted: String = raw
+        .chars()
+        .map(|c| match c {
+            '\u{FF10}'..='\u{FF19}' => char::from(b'0' + (c as u32 - 0xFF10) as u8),
+            other => other,
+        })
+        .collect();
+    let last_dot = converted.rfind('.');
+    let mut seen_minus = false;
+    let mut out = String::new();
+    for (i, c) in converted.char_indices() {
+        if c.is_ascii_digit() {
+            out.push(c);
+        } else if c == '.' && Some(i) == last_dot {
+            out.push('.');
+        } else if c == '-' && !seen_minus {
+            out.push('-');
+            seen_minus = true;
+        }
+    }
+    out.chars().any(|c| c.is_ascii_digit()).then_some(out)
+}
+
 /// `[sign]0x/0b/0o` prefix → (sign + digits, radix).
 #[cfg(feature = "numeric")]
 fn split_radix(s: &str) -> Option<(String, u32)> {
@@ -560,81 +594,88 @@ fn parse_bool(raw: &str) -> Option<bool> {
     }
 }
 
-/// String → i128, honoring the `numeric` extended literal forms.
+/// String → i128, honoring the `numeric` extended literal forms (radix,
+/// `_` separators, BigInt `n`) and, as a fallback, the relaxed
+/// human/spreadsheet notation ([`relaxed_numeric`]).
 fn int128_literal(raw: &str) -> Option<i128> {
     #[cfg(feature = "numeric")]
     {
-        let (s, _) = clean_literal(raw)?;
-        if let Some((digits, radix)) = split_radix(&s) {
-            return i128::from_str_radix(&digits, radix).ok();
-        }
-        s.parse().ok()
+        let primary = clean_literal(raw).and_then(|(s, _)| match split_radix(&s) {
+            Some((digits, radix)) => i128::from_str_radix(&digits, radix).ok(),
+            None => s.parse().ok(),
+        });
+        primary.or_else(|| relaxed_numeric(raw).and_then(|s| s.parse().ok()))
     }
     #[cfg(not(feature = "numeric"))]
     raw.parse().ok()
 }
 
-/// String → u128, honoring the `numeric` extended literal forms.
+/// String → u128, honoring the `numeric` extended literal forms and the
+/// relaxed fallback.
 fn uint128_literal(raw: &str) -> Option<u128> {
     #[cfg(feature = "numeric")]
     {
-        let (s, _) = clean_literal(raw)?;
-        if let Some((digits, radix)) = split_radix(&s) {
-            return u128::from_str_radix(&digits, radix).ok();
-        }
-        s.parse().ok()
+        let primary = clean_literal(raw).and_then(|(s, _)| match split_radix(&s) {
+            Some((digits, radix)) => u128::from_str_radix(&digits, radix).ok(),
+            None => s.parse().ok(),
+        });
+        primary.or_else(|| relaxed_numeric(raw).and_then(|s| s.parse().ok()))
     }
     #[cfg(not(feature = "numeric"))]
     raw.parse().ok()
 }
 
-/// String → i64, honoring the `numeric` extended literal forms.
+/// String → i64, honoring the `numeric` extended literal forms and the
+/// relaxed fallback.
 fn int_literal(raw: &str) -> Option<i64> {
     #[cfg(feature = "numeric")]
     {
-        let (s, _) = clean_literal(raw)?;
-        if let Some((digits, radix)) = split_radix(&s) {
-            return i64::from_str_radix(&digits, radix).ok();
-        }
-        s.parse().ok()
+        let primary = clean_literal(raw).and_then(|(s, _)| match split_radix(&s) {
+            Some((digits, radix)) => i64::from_str_radix(&digits, radix).ok(),
+            None => s.parse().ok(),
+        });
+        primary.or_else(|| relaxed_numeric(raw).and_then(|s| s.parse().ok()))
     }
     #[cfg(not(feature = "numeric"))]
     raw.parse().ok()
 }
 
-/// String → u64, honoring the `numeric` extended literal forms.
+/// String → u64, honoring the `numeric` extended literal forms and the
+/// relaxed fallback.
 fn uint_literal(raw: &str) -> Option<u64> {
     #[cfg(feature = "numeric")]
     {
-        let (s, _) = clean_literal(raw)?;
-        if let Some((digits, radix)) = split_radix(&s) {
-            return u64::from_str_radix(&digits, radix).ok();
-        }
-        s.parse().ok()
+        let primary = clean_literal(raw).and_then(|(s, _)| match split_radix(&s) {
+            Some((digits, radix)) => u64::from_str_radix(&digits, radix).ok(),
+            None => s.parse().ok(),
+        });
+        primary.or_else(|| relaxed_numeric(raw).and_then(|s| s.parse().ok()))
     }
     #[cfg(not(feature = "numeric"))]
     raw.parse().ok()
 }
 
-/// String → f64; radix and BigInt forms convert through integers.
+/// String → f64; radix and BigInt forms convert through integers, with
+/// the relaxed human/spreadsheet notation as a final fallback.
 fn float_literal(raw: &str) -> Option<f64> {
     #[cfg(feature = "numeric")]
     {
-        let (s, bigint) = clean_literal(raw)?;
-        if let Some((digits, radix)) = split_radix(&s) {
-            return i64::from_str_radix(&digits, radix)
-                .ok()
-                .map(|v| v as f64)
-                .or_else(|| u64::from_str_radix(&digits, radix).ok().map(|v| v as f64));
-        }
-        if bigint {
-            return s
-                .parse::<i64>()
-                .ok()
-                .map(|v| v as f64)
-                .or_else(|| s.parse::<u64>().ok().map(|v| v as f64));
-        }
-        s.parse().ok()
+        let primary = clean_literal(raw).and_then(|(s, bigint)| {
+            if let Some((digits, radix)) = split_radix(&s) {
+                i64::from_str_radix(&digits, radix)
+                    .ok()
+                    .map(|v| v as f64)
+                    .or_else(|| u64::from_str_radix(&digits, radix).ok().map(|v| v as f64))
+            } else if bigint {
+                s.parse::<i64>()
+                    .ok()
+                    .map(|v| v as f64)
+                    .or_else(|| s.parse::<u64>().ok().map(|v| v as f64))
+            } else {
+                s.parse().ok()
+            }
+        });
+        primary.or_else(|| relaxed_numeric(raw).and_then(|s| s.parse::<f64>().ok()))
     }
     #[cfg(not(feature = "numeric"))]
     raw.parse().ok()

@@ -23,17 +23,21 @@ Output:
   --trace               annotate every value with its source + format
 
 Options (mirror Options; each boolean also has a --no-<name> form):
-  --recursive           scan subdirectories (default off)
-  --flat                merge mode: ignore subfolder names (default on;
-                        --no-flat makes each subfolder a key)
+  --dir-depth <n>       subdirectory levels to scan: 1 (default) = the
+                        folder + one level, 0 = the folder only, -1 = all
+  --filename-as-key     make each file a key named after it (default off)
+  --dirname-as-key      make each subfolder a key (default off)
+  --sheetname-as-key    spreadsheets: make each sheet a key (default off;
+                        off reads only the 'config' sheet)
+  --tree                preset: --filename-as-key --dirname-as-key
+                        --sheetname-as-key --dir-depth -1
   --dot-key             expand dotted keys a.b.c -> {a:{b:{c}}} (default on)
   --case-sensitive      case-sensitive key merge (default on)
   --order <id>          folders_first_alphabetic (default) | alphabetic |
                         reverse_alphabetic  (also: folders_first, reverse)
-  --tree                tree mode: folders/files become keys (default off)
-  --auto-files          tree: auto-detect extension-less files (default on)
-  --ignore-unknown-ext  tree: skip unknown-extension files (default on)
-  --ignore-sheet-prefix
+  --auto-no-ext-files  keyed files: auto-detect extension-less files (on)
+  --ignore-unknown-ext  keyed files: skip unknown-extension files (on)
+  --ignore-commented-sheets
                         spreadsheets: skip sheets named #*/.*/_* (default on)
   --ignore-hidden-sheets
                         spreadsheets: skip hidden sheets (default on)
@@ -44,8 +48,9 @@ Examples:
   c4 ./config ./local.toml -f yaml      # merge sources, print yaml
   c4 -o merged.json                     # write json (format from extension)
   c4 --trace -f json                    # provenance tree as json
-  c4 --tree ./config                    # tree mode: folders/files become keys
-  c4 --recursive --no-flat              # nest each subfolder as a key
+  c4 --tree ./config                    # tree preset: folders/files become keys
+  c4 --dirname-as-key                   # nest each subfolder as a key
+  c4 --dir-depth -1                     # merge every subdirectory level
   c4 --order alphabetic                 # folders and files interleaved
   c4 --no-dot-key --no-case-sensitive   # flat keys, case-insensitive merge
 
@@ -54,8 +59,8 @@ Notes:
   reordered columns, use a CustomFormat (see the csv-header example).
   Spreadsheets (xlsx/xlsm/xlsb/xls/ods) parse each sheet as a db record
   grid (keys row, types row, data rows); the sheet named 'config' is
-  read (with --tree, every sheet becomes a key). They are input-only
-  formats (-f excel is not valid output).
+  read (with --sheetname-as-key, every sheet becomes a key). They are
+  input-only formats (-f excel is not valid output).
 ";
 
 /// Output serializer. Jsonc collapses into Json; env and ini share the
@@ -115,7 +120,17 @@ fn run() -> Result<(), String> {
     let mut format_flag: Option<String> = None;
     let mut out_path: Option<PathBuf> = None;
     let mut trace = false;
-    let mut opts = Options::default();
+    // the CLI is always flat-by-default and opts into keying via flags
+    // (`--tree`, `--filename-as-key`, …). `Options::default()` would flip
+    // to tree-shaped loading when the binary is built with the `tree`
+    // feature, so pin an explicit flat baseline regardless of build.
+    let mut opts = Options {
+        filename_as_key: false,
+        dirname_as_key: false,
+        sheetname_as_key: false,
+        dir_depth: 1,
+        ..Options::default()
+    };
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -135,22 +150,42 @@ fn run() -> Result<(), String> {
                 opts.order =
                     Order::from_id(&id).ok_or_else(|| format!("unknown order id '{id}'"))?;
             }
-            "--recursive" => opts.recursive = true,
-            "--no-recursive" => opts.recursive = false,
-            "--flat" => opts.flat = true,
-            "--no-flat" => opts.flat = false,
+            "--dir-depth" => {
+                let v = value("--dir-depth needs an integer")?;
+                opts.dir_depth = v
+                    .parse()
+                    .map_err(|_| format!("--dir-depth needs an integer (got '{v}')"))?;
+            }
+            "--filename-as-key" => opts.filename_as_key = true,
+            "--no-filename-as-key" => opts.filename_as_key = false,
+            "--dirname-as-key" => opts.dirname_as_key = true,
+            "--no-dirname-as-key" => opts.dirname_as_key = false,
+            "--sheetname-as-key" => opts.sheetname_as_key = true,
+            "--no-sheetname-as-key" => opts.sheetname_as_key = false,
             "--dot-key" => opts.dot_key = true,
             "--no-dot-key" => opts.dot_key = false,
             "--case-sensitive" => opts.case_sensitive = true,
             "--no-case-sensitive" => opts.case_sensitive = false,
-            "--tree" => opts.tree = true,
-            "--no-tree" => opts.tree = false,
-            "--auto-files" => opts.auto_files = true,
-            "--no-auto-files" => opts.auto_files = false,
+            // the tree preset: folders, files and sheets all become keys,
+            // and the whole tree is scanned
+            "--tree" => {
+                opts.filename_as_key = true;
+                opts.dirname_as_key = true;
+                opts.sheetname_as_key = true;
+                opts.dir_depth = -1;
+            }
+            "--no-tree" => {
+                opts.filename_as_key = false;
+                opts.dirname_as_key = false;
+                opts.sheetname_as_key = false;
+                opts.dir_depth = 1;
+            }
+            "--auto-no-ext-files" => opts.auto_no_ext_files = true,
+            "--no-auto-no-ext-files" => opts.auto_no_ext_files = false,
             "--ignore-unknown-ext" => opts.ignore_unknown_ext = true,
             "--no-ignore-unknown-ext" => opts.ignore_unknown_ext = false,
-            "--ignore-sheet-prefix" => opts.ignore_sheet_prefix = true,
-            "--no-ignore-sheet-prefix" => opts.ignore_sheet_prefix = false,
+            "--ignore-commented-sheets" => opts.ignore_commented_sheets = true,
+            "--no-ignore-commented-sheets" => opts.ignore_commented_sheets = false,
             "--ignore-hidden-sheets" => opts.ignore_hidden_sheets = true,
             "--no-ignore-hidden-sheets" => opts.ignore_hidden_sheets = false,
             "-h" | "--help" => {

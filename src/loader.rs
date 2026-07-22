@@ -73,28 +73,7 @@ impl Loader {
                 // one path source: a folder whose files merge, or a single
                 // file — detected here (same rule as `c4::load`)
                 Source::Path(path) if path.is_dir() => {
-                    if self.options.tree {
-                        #[cfg(feature = "tree")]
-                        self.merge_tree_folder(path, &extensions, &mut root)?;
-                        #[cfg(not(feature = "tree"))]
-                        return Err(Error::Unsupported(
-                            "Options.tree requires the `tree` Cargo feature".into(),
-                        ));
-                    } else {
-                        for (file, prefix) in scan_folder(path, &self.options)? {
-                            let Some(claim) = claimed_format(&file, &extensions) else {
-                                continue; // no active format claims this extension
-                            };
-                            let mut value = self.parse_file(claim, &file)?;
-                            if matches!(value, Value::Null) {
-                                continue; // empty file contributes nothing
-                            }
-                            for key in prefix.into_iter().rev() {
-                                value = Value::Object(BTreeMap::from([(key, value)]));
-                            }
-                            self.merge(&mut root, value, &SourceRef::File(file));
-                        }
-                    }
+                    self.load_folder(path, &extensions, &mut root)?;
                 }
                 Source::Path(path) if path.is_file() => {
                     let claim = claimed_format(path, &extensions).ok_or_else(|| Error::Parse {
@@ -195,21 +174,30 @@ impl Loader {
         merge_traced(target, value, source, !self.options.case_sensitive);
     }
 
-    /// Tree mode: every subfolder is a key, every file is a key named
-    /// after the file (extension stripped) holding its parsed content.
-    /// Entries load in [`Options::order`]; key collisions (`a.json` +
-    /// `a.yml`, or a file next to a same-named folder) deep-merge as
-    /// usual, so the order decides who wins.
-    #[cfg(feature = "tree")]
-    fn merge_tree_folder(
+    /// Load one folder source: scan it (honoring [`Options::dir_depth`]),
+    /// parse each file, and merge it in. The keying options decide the
+    /// shape — [`filename_as_key`](Options::filename_as_key) wraps each
+    /// file's value under a key named after the file, and
+    /// [`dirname_as_key`](Options::dirname_as_key) wraps under the
+    /// subfolder names leading to it. With both off this is a flat merge;
+    /// with both on (the `tree` feature's default) it is a folder tree.
+    /// Entries load in [`Options::order`], so key collisions deep-merge
+    /// with the later entry winning.
+    fn load_folder(
         &self,
         folder: &Path,
         extensions: &[(String, Claim)],
         root: &mut TracedValue,
     ) -> Result<()> {
         let mut files = Vec::new();
-        walk_tree(folder, Vec::new(), &self.options, &mut files)?;
-        for (file, prefix) in files {
+        walk(
+            folder,
+            Vec::new(),
+            &self.options,
+            self.options.dir_depth,
+            &mut files,
+        )?;
+        for (file, dirs) in files {
             let name = file
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -217,26 +205,37 @@ impl Loader {
                 .to_owned();
             let value = match claimed_format(&file, extensions) {
                 Some(claim) => self.parse_file(claim, &file)?,
-                None if file_extension(&name).is_none() && self.options.auto_files => {
-                    // extensionless: the trimmed content goes through the
-                    // table auto detection (same feature-gated guesses)
+                // extension-less / unknown-extension handling only applies
+                // when a file becomes a key; otherwise the file has no key
+                // to contribute under and is skipped
+                None if self.options.filename_as_key
+                    && file_extension(&name).is_none()
+                    && self.options.auto_no_ext_files =>
+                {
+                    // the trimmed content goes through the table auto
+                    // detection (same feature-gated guesses)
                     let text = std::fs::read_to_string(&file).map_err(Error::Io)?;
                     format::table_auto(text.trim())
                 }
-                None if self.options.ignore_unknown_ext => continue,
-                None => {
+                None if self.options.filename_as_key && !self.options.ignore_unknown_ext => {
                     return Err(Error::Parse {
                         path: file,
                         message: "no active format claims this file's extension".into(),
                     });
                 }
+                None => continue, // no active format claims this extension
             };
             if matches!(value, Value::Null) {
                 continue; // empty file contributes nothing
             }
-            let mut value = Value::Object(BTreeMap::from([(file_stem_key(&name), value)]));
-            for key in prefix.into_iter().rev() {
-                value = Value::Object(BTreeMap::from([(key, value)]));
+            let mut value = value;
+            if self.options.filename_as_key {
+                value = Value::Object(BTreeMap::from([(file_stem_key(&name), value)]));
+            }
+            if self.options.dirname_as_key {
+                for key in dirs.into_iter().rev() {
+                    value = Value::Object(BTreeMap::from([(key, value)]));
+                }
             }
             self.merge(root, value, &SourceRef::File(file));
         }
@@ -244,9 +243,9 @@ impl Loader {
     }
 }
 
-/// Tree-mode key of a file: its name without the extension. A hidden file
-/// whose whole name is its extension (`.env`) keeps the full name.
-#[cfg(feature = "tree")]
+/// The [`filename_as_key`](Options::filename_as_key) key of a file: its
+/// name without the extension. A hidden file whose whole name is its
+/// extension (`.env`) keeps the full name.
 fn file_stem_key(name: &str) -> String {
     let hidden = name.starts_with('.');
     let body = if hidden { &name[1..] } else { name };
@@ -254,29 +253,6 @@ fn file_stem_key(name: &str) -> String {
         Some(i) => format!("{}{}", if hidden { "." } else { "" }, &body[..i]),
         None => name.to_owned(),
     }
-}
-
-/// All files under `dir` in [`Options::order`], recursing into every
-/// subfolder, each with the folder names leading to it.
-#[cfg(feature = "tree")]
-fn walk_tree(
-    dir: &Path,
-    prefix: Vec<String>,
-    options: &Options,
-    out: &mut Vec<(PathBuf, Vec<String>)>,
-) -> Result<()> {
-    let mut entries = read_entries(dir)?;
-    sort_entries(&mut entries, options.order);
-    for (name, path, is_dir) in entries {
-        if is_dir {
-            let mut prefix = prefix.clone();
-            prefix.push(name);
-            walk_tree(&path, prefix, options, out)?;
-        } else {
-            out.push((path, prefix.clone()));
-        }
-    }
-    Ok(())
 }
 
 /// What an extension resolves to: a built-in format (with the index of
@@ -353,30 +329,31 @@ fn sort_entries(entries: &mut [(String, PathBuf, bool)], order: Order) {
     }
 }
 
-/// Files of a folder in load order, each with the subfolder keys leading
-/// to it (empty unless recursive nesting applies).
-fn scan_folder(dir: &Path, options: &Options) -> Result<Vec<(PathBuf, Vec<String>)>> {
-    let mut files = Vec::new();
-    walk(dir, Vec::new(), options, &mut files)?;
-    Ok(files)
-}
-
+/// All files of a folder in load order, each with the subfolder names
+/// leading to it. `depth` is the remaining [`Options::dir_depth`] budget:
+/// `0` stops descent, `-1` recurses without limit, a positive value
+/// decrements per level.
 fn walk(
     dir: &Path,
     prefix: Vec<String>,
     options: &Options,
+    depth: isize,
     out: &mut Vec<(PathBuf, Vec<String>)>,
 ) -> Result<()> {
     let mut entries = read_entries(dir)?;
     sort_entries(&mut entries, options.order);
     for (name, path, is_dir) in entries {
         if is_dir {
-            if options.recursive {
+            if depth != 0 {
                 let mut prefix = prefix.clone();
-                if !options.flat {
-                    prefix.push(name);
-                }
-                walk(&path, prefix, options, out)?;
+                prefix.push(name);
+                walk(
+                    &path,
+                    prefix,
+                    options,
+                    if depth < 0 { -1 } else { depth - 1 },
+                    out,
+                )?;
             }
         } else {
             out.push((path, prefix.clone()));

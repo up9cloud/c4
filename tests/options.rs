@@ -1,13 +1,14 @@
-//! Options behavior: recursive scanning, flat, load order, dot_key,
-//! case sensitivity, and tree mode (folders/files as keys, including
-//! order-driven key collisions and extension handling).
+//! Options behavior: scan depth (`dir_depth`), folder/file keying
+//! (`dirname_as_key`/`filename_as_key`), load order, dot_key, case
+//! sensitivity, and the tree-shaped loading (folders/files as keys,
+//! including order-driven key collisions and extension handling). The
+//! `tree` feature only flips `Options::default()`; the keying itself
+//! works on any build, so these use an explicit flat `base()`.
 
 mod common;
 
 #[allow(unused_imports)] // unused in single-format builds
-use common::check;
-#[allow(unused_imports)] // unused in single-format builds
-use common::loader;
+use common::{base, check, loader};
 
 #[test]
 fn order_converts_from_id() {
@@ -29,31 +30,55 @@ fn order_converts_from_id() {
     }
 }
 
-#[cfg(feature = "yaml")]
+// the `tree` feature is a default-preset: it flips the keying on and
+// scans every depth. The fields themselves are always available.
+#[cfg(feature = "tree")]
 #[test]
-fn non_recursive_skips_subdirectories() {
-    check("recursive_off", c4::Options::default());
+fn tree_feature_flips_defaults() {
+    let d = c4::Options::default();
+    assert!(d.filename_as_key && d.dirname_as_key && d.sheetname_as_key);
+    assert_eq!(d.dir_depth, -1);
+}
+
+#[cfg(not(feature = "tree"))]
+#[test]
+fn default_is_flat_without_tree() {
+    let d = c4::Options::default();
+    assert!(!d.filename_as_key && !d.dirname_as_key && !d.sheetname_as_key);
+    assert_eq!(d.dir_depth, 1);
 }
 
 #[cfg(feature = "yaml")]
 #[test]
-fn recursive_nests_subdirectory_as_key() {
-    // flat defaults to true — nesting by path is the opt-in now
+fn dir_depth_zero_skips_subdirectories() {
+    // dir_depth: 0 reads only the folder's own files
     let options = c4::Options {
-        recursive: true,
-        flat: false,
-        ..c4::Options::default()
+        dir_depth: 0,
+        ..base()
+    };
+    check("recursive_off", options);
+}
+
+#[cfg(feature = "yaml")]
+#[test]
+fn dirname_as_key_nests_subdirectory() {
+    // each subfolder becomes a key (dir_depth default 1 reaches the sub);
+    // keying works without the `tree` feature
+    let options = c4::Options {
+        dirname_as_key: true,
+        ..base()
     };
     check("recursive_nest", options);
 }
 
 #[cfg(feature = "yaml")]
 #[test]
-fn recursive_flat_ignores_paths() {
-    // flat is the default; recursive alone flattens subfolder paths
+fn depth_scan_flattens_paths() {
+    // no keying: subfolder files just merge in flat (default dir_depth 1
+    // already reaches one level; -1 would reach every level)
     let options = c4::Options {
-        recursive: true,
-        ..c4::Options::default()
+        dir_depth: -1,
+        ..base()
     };
     check("recursive_flat", options);
 }
@@ -64,8 +89,8 @@ fn folders_load_before_files_by_default() {
     // Order::FoldersFirstAlphabetic (default): z_sub/ loads before a.yml
     // even though "a.yml" sorts first, so the top-level file wins
     let options = c4::Options {
-        recursive: true,
-        ..c4::Options::default()
+        dir_depth: -1,
+        ..base()
     };
     check("order_folders_first", options);
 }
@@ -75,9 +100,9 @@ fn folders_load_before_files_by_default() {
 fn pure_alphabetic_interleaves_folders_and_files() {
     // a.yml < z_sub: the folder's content loads later and wins
     let options = c4::Options {
-        recursive: true,
+        dir_depth: -1,
         order: c4::Order::Alphabetic,
-        ..c4::Options::default()
+        ..base()
     };
     check("order_alphabetic", options);
 }
@@ -88,7 +113,7 @@ fn reverse_alphabetic_order() {
     // b.json loads first, a.json overrides
     let options = c4::Options {
         order: c4::Order::ReverseAlphabetic,
-        ..c4::Options::default()
+        ..base()
     };
     check("merge_order_reverse", options);
 }
@@ -98,7 +123,7 @@ fn reverse_alphabetic_order() {
 fn case_insensitive_lowercases_and_merges_keys() {
     let options = c4::Options {
         case_sensitive: false,
-        ..c4::Options::default()
+        ..base()
     };
     check("case_insensitive", options);
 }
@@ -107,7 +132,7 @@ fn case_insensitive_lowercases_and_merges_keys() {
 #[test]
 fn dot_key_builds_nested_objects() {
     // dot_key defaults to true
-    check("csv_dot_key", c4::Options::default());
+    check("csv_dot_key", base());
 }
 
 #[cfg(feature = "csv")]
@@ -115,20 +140,25 @@ fn dot_key_builds_nested_objects() {
 fn without_dot_key_stays_flat() {
     let options = c4::Options {
         dot_key: false,
-        ..c4::Options::default()
+        ..base()
     };
     check("csv_flat_key", options);
 }
 
-#[cfg(feature = "tree")]
+// Folder/file keying (the tree shape). This needs no Cargo feature — the
+// `tree` feature only changes the defaults — so these run on any build
+// with the fixtures' format features.
 mod tree {
     #[allow(unused_imports)]
-    use crate::common::check;
+    use crate::common::{base, check};
 
     fn tree_options() -> c4::Options {
         c4::Options {
-            tree: true,
-            ..c4::Options::default()
+            filename_as_key: true,
+            dirname_as_key: true,
+            sheetname_as_key: true,
+            dir_depth: -1,
+            ..base()
         }
     }
 
@@ -204,26 +234,12 @@ mod tree {
     #[cfg(any(feature = "json", feature = "jsonc"))]
     #[test]
     fn unknown_extensions_error_when_strict() {
-        let options = c4::Options {
+        let mut options = c4::Options {
             ignore_unknown_ext: false,
             ..tree_options()
         };
-        let mut options = options;
         options.sources = vec!["tests/fixtures/tree_unknown/config".into()];
         let res = c4::Loader::new(options).load::<c4::Value>();
         assert!(matches!(res, Err(c4::Error::Parse { .. })));
     }
-}
-
-#[cfg(not(feature = "tree"))]
-#[test]
-fn tree_without_feature_is_unsupported() {
-    let options = c4::Options {
-        tree: true,
-        ..c4::Options::default()
-    };
-    let mut options = options;
-    options.sources = vec!["tests/fixtures/simple/config".into()];
-    let res = c4::Loader::new(options).load::<c4::Value>();
-    assert!(matches!(res, Err(c4::Error::Unsupported(_))));
 }

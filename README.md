@@ -16,44 +16,30 @@ cargo add c4-config    # the package is c4-config; in code it is `c4`
 
 ## Why c4
 
-Honestly: in the AI era you may not need a config library at all. If
-your app reads one simple settings file, ask your AI assistant to
-write bespoke loading code instead — **zero dependencies** is lighter
-than any library, including this one. Don't add c4 for that.
+In the AI era, you often don't need a config library. If your application
+loads a single settings file, let your AI generate the loading code —
+**zero dependencies** is still the lightest solution.
 
-What still deserves a library is a **convention**. node-config's real
-contribution was never convenience — it was a rule set a whole team
-could point at: multiple files, deterministic override order, deep
-merge. c4 exists to be that rule set for Rust:
+**c4 is for projects where conventions matter.**
 
-- **Deterministic merging you don't re-invent per project** — later
-  sources override earlier, filenames decide order inside a folder,
-  objects merge deep, arrays and scalars replace. One sentence,
-  always true.
-- **Table conventions non-programmers can own** — `key,value[,format]`
-  rows for settings (the CSV default), or a `db` record grid (keys /
-  types / rows → an array of typed objects; the spreadsheet default)
-  for data tables, the same whether they live
-  in a CSV file or an Excel/OpenDocument sheet. Planners — game
-  designers especially — edit config in the spreadsheet tools they
-  already use, with typed cells (integers, bools, dates, IPs, UUIDs, …)
-  instead of stringly data, and no programmer in the loop.
-- **Escape hatches that are documented, not discovered** — when the
-  convention doesn't fit (header rows, transposed grids, a homegrown
-  format), a `CustomFormat` or `CustomLayout` is a few lines reusing
-  the same table stage. Every hatch ships as a runnable example under
-  [`examples/`](examples/).
+It defines a simple, predictable rule set instead of making every project
+reinvent one:
 
-**Project goals — ease of use first:**
+- **Deterministic merging** — later sources override earlier ones, files
+  merge in filename order, objects merge deeply, arrays and scalars
+  replace.
+- **Spreadsheet-first tables** — the same table conventions work in CSV,
+  Excel and OpenDocument, with typed values instead of stringly-typed data.
+- **Easy escape hatches** — when the defaults don't fit, implement a
+  `CustomFormat` or `CustomLayout` while reusing the same parsing
+  pipeline.
 
-- An API you can remember: a handful of names, and most jobs are a few
-  lines.
-- Everything optional and changeable: formats, value parsers and modes
-  are Cargo features and plain-data `Options` — take only what you use.
-- Test-driven: every documented behavior is covered by tests before it
-  is implemented.
-- An escape hatch: custom formats let you support a file format
-  yourself before (or instead of) waiting for a release.
+### Design goals
+
+- **Easy to remember** — a small API that covers most use cases.
+- **Composable** — formats, parsers and behavior are all optional.
+- **Extensible** — custom formats integrate without forking the library.
+- **Test-driven** — documented behavior is backed by tests.
 
 ## Usage
 
@@ -94,9 +80,9 @@ let cfg: MyConfig = c4::load("config")?;
 ## Documentation
 
 The full reference — mixed sources and every `Options` field, the Cargo
-features, format/extension mapping, merge rules, tree mode, typed table
-cells, custom formats and provenance tracing — lives in the crate docs,
-with runnable examples:
+features, format/extension mapping, merge rules, folder shape (depth and
+folder/file/sheet keying), typed table cells, custom formats and
+provenance tracing — lives in the crate docs, with runnable examples:
 
 **📖 [docs.rs/c4-config](https://docs.rs/c4-config)**
 
@@ -113,7 +99,7 @@ form), plus output flags `-f`/`-o`/`--trace`:
 c4                        # read ./config, print the Rust Debug form
 c4 ./config -f yaml       # explicit sources, choose the output format
 c4 --trace -f json        # provenance tree (source + format per value) as JSON
-c4 --tree                 # tree mode: folders/files become keys
+c4 --tree                 # key by folder/file/sheet name (a preset)
 c4 --help                 # every flag, with examples and notes
 ```
 

@@ -531,35 +531,68 @@ pub struct Options {
     /// assert_eq!(options.formats.len(), 3);
     /// ```
     pub formats: Vec<FormatSpec>,
-    /// **Merge mode only** (`tree: false`); folder sources. Scan
-    /// subdirectories too. Default `false`.
+    /// **Folder sources.** How many subdirectory levels below the source
+    /// folder to scan. `1` (default): the source folder's own files and
+    /// one level of subfolders — `config/*` and `config/a/*`, but not
+    /// `config/a/b/*`. `0`: only the source folder's own files. `-1`:
+    /// unlimited (fully recursive). Whether the folders that are scanned
+    /// contribute their names as keys is [`dirname_as_key`](Options::dirname_as_key).
+    /// (The `tree` feature changes this field's default to `-1` — see the
+    /// feature.)
     ///
     /// ```no_run
     /// # fn main() -> Result<(), c4::Error> {
-    /// // config/base.json and config/prod/db.json both merge in
+    /// // config/*, config/a/* and config/a/b/* all merge in
     /// let value: c4::Value = c4::Loader::new(c4::Options {
-    ///         recursive: true,
+    ///         dir_depth: -1, // fully recursive
     ///         ..c4::Options::default()
     ///     })
     ///     .load()?;
     /// # Ok(())
     /// # }
     /// ```
-    pub recursive: bool,
-    /// **Merge mode only**, and only meaningful with
-    /// `recursive: true`. `true` (default): subfolder files merge as if
-    /// they sat at the top level — folder names carry no meaning.
-    /// `false`: each subfolder becomes a key and its files merge under
-    /// it. (The *filename* never becomes a key in merge mode; for
-    /// folder-and-filename keys use tree mode.)
+    pub dir_depth: isize,
+    /// **Folder sources.** When `true`, each **file** becomes a key named
+    /// after the file with its extension stripped, holding that file's
+    /// parsed content, instead of merging into the parent — `a.json =
+    /// {"c": 1}` loads as `{a: {c: 1}}`. Default `false` (the `tree`
+    /// feature changes this default to `true` — see the feature). Combine
+    /// with [`dirname_as_key`](Options::dirname_as_key) and `dir_depth:
+    /// -1` for a full folder-shaped tree. A dotfile whose whole name is
+    /// its extension (`.env`) keeps the full name as its key.
+    ///
+    /// This is also the switch that decides how *extension-less* and
+    /// *unknown-extension* files are handled (see
+    /// [`auto_no_ext_files`](Options::auto_no_ext_files) and
+    /// [`ignore_unknown_ext`](Options::ignore_unknown_ext)): those only
+    /// apply when a file would become a key. Otherwise such files are
+    /// skipped (they have no key to contribute under).
     ///
     /// ```no_run
     /// # fn main() -> Result<(), c4::Error> {
-    /// // config/db/a.json = {"host": "x"} — with flat: false it merges
-    /// // under the subfolder's key instead of the top level
+    /// // config/a.json = {"c": 1}  ->  {a: {c: 1}}
     /// let value: c4::Value = c4::Loader::new(c4::Options {
-    ///         recursive: true,
-    ///         flat: false,
+    ///         filename_as_key: true,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// assert_eq!(value["a"]["c"].as_i64(), Some(1));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub filename_as_key: bool,
+    /// **Folder sources.** When `true`, each **subfolder** becomes a key
+    /// and everything under it merges below that key — `db/a.json =
+    /// {"host": "x"}` loads as `{db: {host: "x"}}`. Default `false` (the
+    /// `tree` feature changes this default to `true` — see the feature).
+    /// Honors [`dir_depth`](Options::dir_depth): only folders actually
+    /// scanned become keys.
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // config/db/a.json = {"host": "x"} — the subfolder becomes a key
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         dirname_as_key: true,
     ///         ..c4::Options::default()
     ///     })
     ///     .load()?;
@@ -567,7 +600,7 @@ pub struct Options {
     /// # Ok(())
     /// # }
     /// ```
-    pub flat: bool,
+    pub dirname_as_key: bool,
     /// **All modes; env and table formats.** Treat dotted keys as nested
     /// paths: `a.b.c` becomes `{ "a": { "b": { "c": … } } }`.
     /// Default `true`.
@@ -677,58 +710,51 @@ pub struct Options {
     /// # }
     /// ```
     pub order: Order,
-    /// **Mode switch** (requires the `tree` feature; `true` without it
-    /// is `Error::Unsupported`). `false` (default): merge mode — a
-    /// folder's files deep-merge into one value. `true`: tree mode — the
-    /// folder's *shape* becomes the value: every subfolder is a key, and
-    /// every file is a key named after the file (extension stripped)
-    /// holding that file's parsed content — `a/b.json = {c:1}` and
-    /// `d.json = {a:123}` load as `{a: {b: {c: 1}}, d: {a: 123}}`.
-    ///
-    /// The rules, in full:
-    /// - Applies to **folder path sources** only; single-file and string
-    ///   sources merge into the root as always.
-    /// - Always recursive — `recursive` and `flat` do not apply, but
-    ///   `order` does: entries load in order, and a key collision
-    ///   (`a.yml` next to a folder `a/`) deep-merges, so order decides
-    ///   the winner.
-    /// - A dotfile whose whole name is its extension (`.env`) keeps the
-    ///   full name as its key.
-    /// - Extension handling: a claimed extension parses normally; an
-    ///   extension-less file follows [`auto_files`](Options::auto_files);
-    ///   any other unclaimed extension follows
-    ///   [`ignore_unknown_ext`](Options::ignore_unknown_ext).
-    /// - A spreadsheet workbook parses to an object keyed by sheet name,
-    ///   so its sheets become keys under the file's key — `a/b.xlsx`
-    ///   with sheets `c`, `d` loads as `{a: {b: {c: …, d: …}}}`.
+    /// **Spreadsheet formats (excel/ods) only.** Treats each sheet of a
+    /// workbook like a file. When `true`, a workbook parses to an object
+    /// keyed by sheet name (every sheet left after the ignore filters
+    /// becomes a key) — the sheet analogue of
+    /// [`filename_as_key`](Options::filename_as_key). When `false`
+    /// (default), every non-ignored sheet still parses, but they all
+    /// **deep-merge** into one value (like several files in a folder), in
+    /// [`order`](Options::order) applied to the sheet names — so later
+    /// sheets override earlier ones. Default `false` (the `tree` feature
+    /// changes this default to `true` — see the feature). (A table source
+    /// that names a sheet explicitly is unaffected — it always reads
+    /// exactly that sheet.)
     ///
     /// ```no_run
     /// # fn main() -> Result<(), c4::Error> {
-    /// // config/a/b.json = {"c": 1}  ->  {a: {b: {c: 1}}}
+    /// // game.xlsx has sheets "items" and "monsters" — each becomes a key
     /// let value: c4::Value = c4::Loader::new(c4::Options {
-    ///         tree: true,
+    ///         sources: vec!["./game.xlsx".into()],
+    ///         sheetname_as_key: true,
     ///         ..c4::Options::default()
     ///     })
     ///     .load()?;
-    /// assert_eq!(value["a"]["b"]["c"].as_i64(), Some(1));
+    /// assert!(!value["items"].is_null());
     /// # Ok(())
     /// # }
     /// ```
-    pub tree: bool,
-    /// **Tree mode only.** What to do with a file that has *no*
-    /// extension. `true` (default): read it and guess the type of its
-    /// (trimmed) content with the table `auto` rules — a file containing
-    /// `1.1.1.1` becomes an IPv4 value when the `ipv4` feature is on, a
-    /// string otherwise. `false`: treat it like a file with an unknown
-    /// extension (see [`ignore_unknown_ext`](Options::ignore_unknown_ext)).
-    /// (Named `auto_files` after the table `auto` type id it reuses.)
+    pub sheetname_as_key: bool,
+    /// **Only when [`filename_as_key`](Options::filename_as_key) is true**
+    /// (files become keys); folder sources. What to do with a file that
+    /// has *no* extension. `true` (default): read it and guess the type of
+    /// its (trimmed) content with the table `auto` rules — a file
+    /// containing `1.1.1.1` becomes an IPv4 value when the `ipv4` feature
+    /// is on, a string otherwise. `false`: treat it like a file with an
+    /// unknown extension (see
+    /// [`ignore_unknown_ext`](Options::ignore_unknown_ext)). (Named
+    /// `auto_no_ext_files` after the table `auto` type id it reuses.)
+    /// Without `filename_as_key` an extension-less file has no key to
+    /// contribute under and is skipped regardless.
     ///
     /// ```no_run
     /// # fn main() -> Result<(), c4::Error> {
-    /// // tree mode: config/host is an extension-less file holding "1.1.1.1"
+    /// // config/host is an extension-less file holding "1.1.1.1"
     /// let value: c4::Value = c4::Loader::new(c4::Options {
-    ///         tree: true,
-    ///         auto_files: true,
+    ///         filename_as_key: true,
+    ///         auto_no_ext_files: true,
     ///         ..c4::Options::default()
     ///     })
     ///     .load()?;
@@ -736,16 +762,17 @@ pub struct Options {
     /// # Ok(())
     /// # }
     /// ```
-    pub auto_files: bool,
-    /// **Tree mode only.** What to do with a file whose extension no
-    /// active format claims: skip it (`true`, default) or fail the load
-    /// with `Error::Parse` (`false`). Merge mode always skips such
-    /// files.
+    pub auto_no_ext_files: bool,
+    /// **Only when [`filename_as_key`](Options::filename_as_key) is true**
+    /// (files become keys); folder sources. What to do with a file whose
+    /// extension no active format claims: skip it (`true`, default) or
+    /// fail the load with `Error::Parse` (`false`). Without
+    /// `filename_as_key` such files are always skipped.
     ///
     /// ```no_run
     /// # fn main() -> Result<(), c4::Error> {
     /// let value: c4::Value = c4::Loader::new(c4::Options {
-    ///         tree: true,
+    ///         filename_as_key: true,
     ///         ignore_unknown_ext: false, // a config/*.xyz file now errors
     ///         ..c4::Options::default()
     ///     })
@@ -756,18 +783,18 @@ pub struct Options {
     pub ignore_unknown_ext: bool,
     /// **Spreadsheet formats (excel/ods) only.** Skip sheets whose name
     /// starts with `#`, `.` or `_` — draft/scratch space next to live
-    /// config. Default `true`. (A table source that names a sheet
-    /// explicitly bypasses this filter, so a prefixed sheet stays
-    /// loadable on purpose.)
+    /// config, read like a "commented-out" sheet. Default `true`. (A
+    /// table source that names a sheet explicitly bypasses this filter, so
+    /// a prefixed sheet stays loadable on purpose.)
     ///
     /// ```no_run
     /// # fn main() -> Result<(), c4::Error> {
-    /// // tree mode: game.xlsx has sheets "items" and "_draft"; by
-    /// // default "_draft" is skipped — false reads it as a key too
+    /// // game.xlsx has sheets "items" and "_draft"; by default "_draft"
+    /// // is skipped — false reads it as a key too
     /// let value: c4::Value = c4::Loader::new(c4::Options {
     ///         sources: vec!["./game.xlsx".into()],
-    ///         tree: true,
-    ///         ignore_sheet_prefix: false,
+    ///         sheetname_as_key: true,
+    ///         ignore_commented_sheets: false,
     ///         ..c4::Options::default()
     ///     })
     ///     .load()?;
@@ -775,7 +802,7 @@ pub struct Options {
     /// # Ok(())
     /// # }
     /// ```
-    pub ignore_sheet_prefix: bool,
+    pub ignore_commented_sheets: bool,
     /// **Spreadsheet formats (excel/ods) only.** Skip sheets marked
     /// hidden in the workbook (Excel `hidden`/`veryHidden`, OpenDocument
     /// `table:display="false"`). Default `true`. (A table source that
@@ -801,15 +828,20 @@ impl Default for Options {
         Self {
             sources: vec![Source::Path("config".into())],
             formats: enabled_formats(),
-            recursive: false,
-            flat: true,
+            // The `tree` feature is a default-preset, not a capability: it
+            // flips the folder/file/sheet keying on and scans every depth.
+            // The keying fields themselves work on any build; enabling
+            // `tree` just makes tree-shaped loading the default.
+            dir_depth: if cfg!(feature = "tree") { -1 } else { 1 },
+            filename_as_key: cfg!(feature = "tree"),
+            dirname_as_key: cfg!(feature = "tree"),
+            sheetname_as_key: cfg!(feature = "tree"),
             dot_key: true,
             case_sensitive: true,
             order: Order::default(),
-            tree: false,
-            auto_files: true,
+            auto_no_ext_files: true,
             ignore_unknown_ext: true,
-            ignore_sheet_prefix: true,
+            ignore_commented_sheets: true,
             ignore_hidden_sheets: true,
         }
     }

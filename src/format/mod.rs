@@ -18,8 +18,7 @@ mod sheet;
 // `crate::parse_table` regardless of which format features are on
 pub(crate) mod table;
 
-// tree mode runs extensionless files through the same auto detection
-#[cfg(feature = "tree")]
+// filename_as_key runs extensionless files through the same auto detection
 pub(crate) use table::auto as table_auto;
 #[cfg(feature = "toml")]
 mod toml;

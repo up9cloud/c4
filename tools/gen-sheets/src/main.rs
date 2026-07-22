@@ -45,12 +45,13 @@ fn main() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixtures = root.join("tests/fixtures");
 
-    // excel_basic: only the `config` sheet is read in merge mode; a named
-    // sheet, a #-prefixed sheet and a hidden sheet are all ignored, and a
-    // second workbook without a `config` sheet contributes nothing. The
-    // sheet is a db grid (the spreadsheet default layout): typed columns,
-    // an auto column (empty type cell), a dotted key column, and a sparse
-    // second record.
+    // excel_basic: in merge mode every non-ignored sheet parses and they
+    // deep-merge like files; here `config` is the only non-ignored sheet
+    // (a `_`-prefixed sheet, a `#`-prefixed sheet and a hidden sheet are
+    // all skipped), and a second workbook whose only sheet is ignored
+    // contributes nothing. The sheet is a db grid (the spreadsheet default
+    // layout): typed columns, an auto column (empty type cell), a dotted
+    // key column, and a sparse second record.
     let config_rows = vec![
         (
             1,
@@ -65,14 +66,14 @@ fn main() {
         &fixtures.join("excel_basic/config/app.xlsx"),
         &[
             ("config", false, config_rows),
-            ("notes", false, junk(1.0)),
+            ("_notes", false, junk(1.0)),
             ("#draft", false, junk(2.0)),
             ("secret", true, junk(3.0)),
         ],
     );
     write_xlsx(
         &fixtures.join("excel_basic/config/zz_extra.xlsx"),
-        &[("misc", false, junk(4.0))],
+        &[("_misc", false, junk(4.0))],
     );
 
     // excel_hidden_config(+_off): the same workbook under both settings of
@@ -94,7 +95,7 @@ fn main() {
     );
 
     // excel_tree(+_prefix_off): every sheet becomes a key; prefixed sheets
-    // (#/./_) follow ignore_sheet_prefix, hidden sheets stay ignored.
+    // (#/./_) follow ignore_commented_sheets, hidden sheets stay ignored.
     let grid = |key: &'static str, ty: &'static str, value: Cell| {
         vec![(1, vec![S(key)]), (2, vec![S(ty)]), (3, vec![value])]
     };

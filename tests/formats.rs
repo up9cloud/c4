@@ -8,24 +8,24 @@
 mod common;
 
 #[allow(unused_imports)] // unused when no extra format feature is on
-use common::{check, fx, loader};
+use common::{base, check, fx, loader};
 
 #[cfg(feature = "csv")]
 mod csv {
-    use crate::common::{check, fx, loader};
+    use crate::common::{base, check, fx, loader};
 
     #[test]
     fn scalar_types_and_aliases() {
         // includes int/number/string/boolean aliases, an explicit `auto`
         // row and a row with an empty type cell (also auto)
-        check("csv_scalars", c4::Options::default());
+        check("csv_scalars", base());
     }
 
     #[test]
     fn two_columns_auto_types() {
         // no type column at all: bool → integer → float → string, and
         // leading-zero integers stay strings
-        check("csv_auto", c4::Options::default());
+        check("csv_auto", base());
     }
 
     // a `json` cell holds a whole JSON document (array, object, null, …);
@@ -34,7 +34,7 @@ mod csv {
     #[cfg(feature = "json")]
     #[test]
     fn json_cell_holds_a_document() {
-        check("csv_extended", c4::Options::default());
+        check("csv_extended", base());
     }
 
     // strict means strict: a jsonc-ism in a `json` cell fails the row
@@ -188,7 +188,7 @@ mod csv {
 
     #[test]
     fn list_cells_load_from_a_fixture() {
-        check("csv_list", c4::Options::default());
+        check("csv_list", base());
     }
 
     #[test]
@@ -296,7 +296,7 @@ mod csv {
         // columns in any order (value,key,format), located by their names
         let value: c4::Value = c4::Loader::new(c4::Options {
             sources: vec![(csv_header, "value,key,format\nc4,name,str\n8080,port,u16").into()],
-            ..c4::Options::default()
+            ..crate::common::base()
         })
         .load()
         .unwrap();
@@ -331,7 +331,7 @@ mod csv {
         // keys / values / formats rows; the last column has no format cell
         let value: c4::Value = c4::Loader::new(c4::Options {
             sources: vec![(csv_t.clone(), "a,b,c\n1,1.1.1.1,8080\nint,ipv4").into()],
-            ..c4::Options::default()
+            ..crate::common::base()
         })
         .load()
         .unwrap();
@@ -342,7 +342,7 @@ mod csv {
         // the ipv4 format actually validates — a bad address errors
         let bad = c4::Loader::new(c4::Options {
             sources: vec![(csv_t, "b\n999.1.1.1\nipv4").into()],
-            ..c4::Options::default()
+            ..crate::common::base()
         })
         .load::<c4::Value>();
         assert!(matches!(bad, Err(c4::Error::Table { row: 1, .. })));
@@ -353,7 +353,7 @@ mod csv {
     #[cfg(feature = "datetime")]
     #[test]
     fn dt_type_and_datetime_alias() {
-        check("csv_datetime", c4::Options::default());
+        check("csv_datetime", base());
     }
 
     #[cfg(all(feature = "date", feature = "time", feature = "ipv4", feature = "ipv6"))]
@@ -361,7 +361,7 @@ mod csv {
     fn date_time_ip_types() {
         // parsed values serialize back to their (canonical) text, so the
         // expectation file needs no feature-specific variants
-        check("csv_date_time_ip", c4::Options::default());
+        check("csv_date_time_ip", base());
     }
 
     /// The single leaf of a one-row csv string source — typed assertions
@@ -459,7 +459,7 @@ mod csv {
     #[test]
     fn net_string_types() {
         // serialized form is the text, so expect.json needs no variants
-        check("csv_net", c4::Options::default());
+        check("csv_net", base());
     }
 
     #[cfg(feature = "inet")]
@@ -694,6 +694,48 @@ mod csv {
         assert_eq!(csv_leaf("a,0xff,f64", "a"), c4::Value::Float(255.0));
     }
 
+    // relaxed human/spreadsheet notation on explicit numeric ids only:
+    // thousands separators, currency prefixes and fullwidth digits.
+    // Built via parse_table so commas inside a value don't split columns.
+    #[cfg(feature = "numeric")]
+    #[test]
+    fn relaxed_numeric_forms_in_explicit_types() {
+        use std::path::Path;
+
+        use c4::Value::{Float, Int};
+
+        let opts = c4::Options::default();
+        let cell = |value: &str, ty: &str| -> c4::Value {
+            let rows = vec![vec!["k".to_string(), value.to_string(), ty.to_string()]];
+            let v = c4::parse_table(rows, &c4::TableLayout::Kv, Path::new("doc"), &opts).unwrap();
+            v["k"].clone()
+        };
+
+        assert_eq!(cell("1,000.1", "f64"), Float(1000.1));
+        assert_eq!(cell("10 234 345.111", "f64"), Float(10_234_345.111));
+        assert_eq!(cell("$123.12", "f64"), Float(123.12));
+        assert_eq!(cell("€99", "i64"), Int(99));
+        assert_eq!(cell("£1,000", "u64"), c4::Value::Uint(1000));
+        assert_eq!(cell("¥1,234", "i32"), Int(1234));
+        assert_eq!(cell("-$5", "i8"), Int(-5));
+        // fullwidth digits
+        assert_eq!(cell("１２３", "i64"), Int(123));
+        // the standard literal forms still win first
+        assert_eq!(cell("0xff", "u8"), c4::Value::Uint(255));
+        // a fraction still fails an integer id after cleaning
+        let rows = vec![vec![
+            "k".to_string(),
+            "1,000.5".to_string(),
+            "i64".to_string(),
+        ]];
+        assert!(c4::parse_table(rows, &c4::TableLayout::Kv, Path::new("doc"), &opts).is_err());
+
+        // auto never runs the relaxed pass — it stays a string
+        let rows = vec![vec!["k".to_string(), "1,000.1".to_string()]];
+        let v = c4::parse_table(rows, &c4::TableLayout::Kv, Path::new("doc"), &opts).unwrap();
+        assert_eq!(v["k"], c4::Value::String("1,000.1".into()));
+    }
+
     #[cfg(not(feature = "numeric"))]
     #[test]
     fn radix_literals_without_numeric_feature() {
@@ -825,7 +867,7 @@ mod csv {
 fn strict_json_rejects_comments() {
     let options = c4::Options {
         formats: vec![c4::Format::Json.into()],
-        ..c4::Options::default()
+        ..crate::common::base()
     };
     let mut options = options;
     options.sources = vec![fx("jsonc/config").into()];
@@ -840,7 +882,7 @@ fn reassigned_extension_uses_claiming_parser() {
     // [yaml, (jsonc, ["yml"])] → .yml files are read by the jsonc parser
     let options = c4::Options {
         formats: vec![c4::Format::Yaml.into(), (c4::Format::Jsonc, ["yml"]).into()],
-        ..c4::Options::default()
+        ..crate::common::base()
     };
     check("ext_override", options);
 }
@@ -851,7 +893,7 @@ fn format_spec_string_tuple_form() {
     // ("jsonc", ["json", "jsonc"]) — string id with custom extensions
     let options = c4::Options {
         formats: vec![("jsonc", ["json", "jsonc"]).into()],
-        ..c4::Options::default()
+        ..crate::common::base()
     };
     check("formats_tuple", options);
 }
@@ -859,14 +901,14 @@ fn format_spec_string_tuple_form() {
 #[cfg(feature = "toml")]
 #[test]
 fn toml_basic() {
-    check("toml_basic", c4::Options::default());
+    check("toml_basic", base());
 }
 
 #[cfg(all(feature = "toml", feature = "datetime"))]
 #[test]
 fn toml_datetime_serializes_as_text() {
     // the trace format field is "dt" only with the datetime feature
-    check("toml_datetime", c4::Options::default());
+    check("toml_datetime", base());
 }
 
 #[cfg(feature = "toml")]
@@ -893,7 +935,7 @@ fn toml_datetime_follows_dt_feature() {
 #[test]
 fn ini_basic() {
     // ini has no value types: everything is a string; sections nest
-    check("ini_basic", c4::Options::default());
+    check("ini_basic", base());
 }
 
 #[cfg(feature = "env")]
@@ -901,7 +943,7 @@ fn ini_basic() {
 fn env_basic() {
     // `#` comments, optional `export`, quote stripping; values are
     // strings; no variable interpolation
-    check("env_basic", c4::Options::default());
+    check("env_basic", base());
 }
 
 #[cfg(feature = "env")]
@@ -909,7 +951,7 @@ fn env_basic() {
 fn env_extension_variants() {
     // `.env` itself (dotfile-as-extension rule) plus `local.env`;
     // ".env" < "local.env", so local.env overrides
-    check("env_variants", c4::Options::default());
+    check("env_variants", base());
 }
 
 #[test]
@@ -941,7 +983,7 @@ fn custom_format_markdown_table() {
         "custom_md",
         c4::Options {
             formats,
-            ..c4::Options::default()
+            ..crate::common::base()
         },
     );
 }
@@ -950,26 +992,37 @@ fn custom_format_markdown_table() {
 // Fixtures are generated by tools/gen-sheets.
 #[cfg(feature = "excel")]
 mod excel {
-    use crate::common::{check, expect, fx, loader};
+    use crate::common::{base, check, expect, fx, loader};
 
     #[test]
-    fn merge_mode_reads_only_the_config_sheet() {
-        // app.xlsx: `config` parses; `notes` (other name), `#draft`
-        // (prefix) and `secret` (hidden) are ignored. zz_extra.xlsx has
-        // no `config` sheet and contributes nothing.
-        check("excel_basic", c4::Options::default());
+    fn merge_mode_merges_non_ignored_sheets() {
+        // app.xlsx: `config` is the only non-ignored sheet — `_notes`/
+        // `#draft` (prefix) and `secret` (hidden) are skipped. zz_extra.xlsx
+        // has only a `_`-prefixed sheet and contributes nothing.
+        check("excel_basic", base());
+    }
+
+    #[test]
+    fn merge_mode_merges_every_sheet_like_a_file() {
+        // b.xlsx has visible sheets c, d (and #x/.y/_z/hidden, all
+        // ignored). In merge mode both c and d parse and merge in `order`
+        // by sheet name — being db arrays, the later sheet (d) wins.
+        let value: serde_json::Value = loader(vec![fx("excel_tree/config/a/b.xlsx").into()])
+            .load()
+            .unwrap();
+        assert_eq!(value, serde_json::json!([{ "k2": 2 }]));
     }
 
     #[test]
     fn hidden_config_sheet_contributes_nothing() {
-        check("excel_hidden_config", c4::Options::default());
+        check("excel_hidden_config", base());
     }
 
     #[test]
     fn hidden_sheets_load_when_option_off() {
         let options = c4::Options {
             ignore_hidden_sheets: false,
-            ..c4::Options::default()
+            ..crate::common::base()
         };
         check("excel_hidden_config_off", options);
     }
@@ -999,7 +1052,7 @@ mod excel {
         // padded-in blank row 2 is the type row (all auto) — it must
         // not skip as blank, which would consume the first record as
         // type ids.
-        check("excel_blank_type_row", c4::Options::default());
+        check("excel_blank_type_row", base());
     }
 
     #[test]
@@ -1030,7 +1083,7 @@ mod excel {
         // to the format default
         let options = c4::Options {
             formats: vec![(c4::Format::Excel, ["xlsx"], "kv").into()],
-            ..c4::Options::default()
+            ..crate::common::base()
         };
         check("excel_kv_formats", options);
     }
@@ -1040,17 +1093,21 @@ mod excel {
     #[cfg(feature = "datetime")]
     #[test]
     fn serial_datetime_cells() {
-        check("excel_datetime", c4::Options::default());
+        check("excel_datetime", base());
     }
 
-    #[cfg(feature = "tree")]
+    // sheetname_as_key keys a workbook by sheet; folder/file keying nests
+    // it under the file and folder names. Keying needs no Cargo feature.
     mod tree {
-        use crate::common::check;
+        use crate::common::{base, check};
 
         fn tree_options() -> c4::Options {
             c4::Options {
-                tree: true,
-                ..c4::Options::default()
+                filename_as_key: true,
+                dirname_as_key: true,
+                sheetname_as_key: true,
+                dir_depth: -1,
+                ..base()
             }
         }
 
@@ -1064,7 +1121,7 @@ mod excel {
         #[test]
         fn prefixed_sheets_load_when_option_off() {
             let options = c4::Options {
-                ignore_sheet_prefix: false,
+                ignore_commented_sheets: false,
                 ..tree_options()
             };
             // #x/.y/_z become keys; the hidden sheet stays ignored
@@ -1075,13 +1132,13 @@ mod excel {
 
 #[cfg(feature = "ods")]
 mod ods {
-    use crate::common::{check, loader};
+    use crate::common::{base, check, loader};
 
     #[test]
-    fn merge_mode_reads_only_the_config_sheet() {
+    fn merge_mode_merges_non_ignored_sheets() {
         // `_notes` (prefix) and `hidden1` (table:display="false") are
-        // ignored; only `config` parses
-        check("ods_basic", c4::Options::default());
+        // ignored, leaving only `config` to parse
+        check("ods_basic", base());
     }
 
     #[test]
@@ -1092,12 +1149,14 @@ mod ods {
         assert!(matches!(err, c4::Error::Parse { .. }));
     }
 
-    #[cfg(feature = "tree")]
     #[test]
     fn every_sheet_becomes_a_key() {
         let options = c4::Options {
-            tree: true,
-            ..c4::Options::default()
+            filename_as_key: true,
+            dirname_as_key: true,
+            sheetname_as_key: true,
+            dir_depth: -1,
+            ..base()
         };
         check("ods_tree", options);
     }
@@ -1183,7 +1242,7 @@ mod table_layouts {
         // claims — here a whole folder scan — parses as a record grid
         let options = c4::Options {
             formats: vec![(c4::Format::Csv, ["csv"], "db").into()],
-            ..c4::Options::default()
+            ..crate::common::base()
         };
         crate::common::check("csv_db_formats", options);
     }
@@ -1456,7 +1515,7 @@ fn only_valid_suffix_shapes_make_arrays() {
 fn dot_key_off_keeps_array_suffixes_literal() {
     let options = c4::Options {
         dot_key: false,
-        ..c4::Options::default()
+        ..crate::common::base()
     };
     let value = kv_rows(&[["a[].b", "1"], ["a[0]", "2"]], &options);
     assert_eq!(value["a[].b"].as_i64(), Some(1));
@@ -1509,5 +1568,5 @@ fn env_keys_take_array_suffixes() {
 #[cfg(feature = "csv")]
 #[test]
 fn csv_array_key() {
-    common::check("csv_array_key", c4::Options::default());
+    common::check("csv_array_key", base());
 }

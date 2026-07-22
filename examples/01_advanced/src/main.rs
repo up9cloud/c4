@@ -1,5 +1,5 @@
 //! Mirrors the README "Advanced" usage: several ordered sources (a
-//! folder scanned recursively, an in-code string, a typed in-code
+//! folder scanned to every depth, an in-code string, a typed in-code
 //! value), then a provenance trace.
 //!
 //! Run inside this folder: `cd examples/01_advanced && cargo run`
@@ -24,7 +24,7 @@ fn main() -> Result<(), c4::Error> {
             (Format::Jsonc, r#"{ "note": "from code" }"#).into(),
             (Overrides { debug: true },).into(),
         ],
-        recursive: true,
+        dir_depth: -1, // scan every subdirectory level
         ..Options::default()
     });
 

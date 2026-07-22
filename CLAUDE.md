@@ -27,9 +27,10 @@ README for the quick start and positioning; prose stays lean where code
 comments in an example already explain the forms (the sources/options
 example); per-mode/per-option detail lives on the `Options` field
 docs, with the lib-level section reduced to a short intro + a rust
-example + a ref (tree mode and the spreadsheet section are the models:
-the full rules sit on `Options::tree` /
-`Options::ignore_sheet_prefix`/`ignore_hidden_sheets`); and **every
+example + a ref (folder keying and the spreadsheet section are the
+models: the full rules sit on `Options::filename_as_key` /
+`dirname_as_key` / `sheetname_as_key` /
+`Options::ignore_commented_sheets`/`ignore_hidden_sheets`); and **every
 `Options` field doc carries a rust code block** — runnable when it
 needs no files (value sources, `parse_table`), `no_run` otherwise. Its examples are real doctests and must run under the whole
 feature matrix, so runnable ones use only feature-agnostic pieces
@@ -96,8 +97,15 @@ tests second, implementation third.
   features existed once and were removed: feature unification would let
   any dependency silently flip the app's defaults.) Format features add
   formats; value-parser features add table type ids; `numeric` adds
-  literal syntax; `tree` adds a mode. None of them change what an
-  existing valid input means.
+  literal syntax. None of them change what an existing valid input means.
+  **The one deliberate exception (owner, 2026-07-22): `tree`** — it is a
+  pure default-preset that flips `Options::default()`'s folder/file/sheet
+  keying on (`dir_depth: -1`); the keying fields themselves are always
+  present and work without it. Accepted because keying is a first-class
+  part of the plain-data `Options`, not a hidden capability; the
+  footgun (a dependency enabling `tree` flips your default) is mitigated
+  by `cli` *not* enabling it and the CLI pinning a flat baseline. See the
+  "Folder keying" section for the full rationale and consequences.
 - **`Options.formats` carries no override-order semantics.** It only
   maps extensions to parsers — the last claimer of an extension owns it
   (this is also how extensions are reassigned across formats, e.g.
@@ -224,29 +232,71 @@ or `"reverse"`, `"folders_first_alphabetic"`/`"folders_first"`/`"default"`,
 `-`/`_` interchangeable — so `Options { order: "alphabetic".into(), .. }`
 and the CLI `--order` both work) → deep merge (objects recurse, arrays
 and scalars replace). Same-basename files are just two filenames sorted.
-`flat` defaults to `true`: recursive merge ignores subfolder paths.
-`flat: false` makes each **subfolder** a key, but the **filename never
-becomes a key** — to key by both folder and filename use tree mode.
 Empty parse results (`Value::Null` roots) contribute nothing. A missing
 source path is `Error::NotFound`; a `Source::Path` that resolves to a
 single file whose extension no active format claims is `Error::Parse`
 (in a folder such files are skipped).
 
-### Tree mode (`Options.tree`, feature `tree`)
+**Scan depth (`Options.dir_depth`, default `1`, replaced
+`recursive`/`flat`/`tree` on 2026-07-22).** `dir_depth` is how many
+subdirectory levels below a folder source to scan: `1` = the folder's
+own files plus one level (`config/*` and `config/a/*`, not
+`config/a/b/*`); `0` = the folder only; `-1` = unlimited (fully
+recursive). Whether the scanned folders/files become keys is the keying
+options below — with all keying off (the default), every scanned file
+just deep-merges into the root, folder names carrying no meaning.
 
-Folder path sources only (single-file and string sources merge into the
-root as always). Every subfolder is a key; every file is a key named after the
-file with its extension stripped (a dotfile whose whole name is its
-extension, like `.env`, keeps the full name). Always recursive —
-`recursive`/`flat` do not apply, but `order` does: entries load in
-order and key collisions (`a.yml` vs folder `a/`) deep-merge, so order
-decides the winner. Extension handling: claimed → parse normally;
-extension-less and `auto_files: true` (named to avoid confusion with
-the table `auto` id it reuses) → the trimmed content goes through the
-table `auto` detection; otherwise unclaimed → skipped when
-`ignore_unknown_ext` (default), else `Error::Parse`. `tree: true`
-without the feature is `Error::Unsupported`. The CLI exposes tree mode
-as `--tree`.
+### Folder keying (`tree` is a default-preset, not a gate — owner, 2026-07-22)
+
+The keying options — all `bool`, all default `false`, and **all always
+available on any build** (no feature gate, no `Error::Unsupported`):
+
+- **`filename_as_key`** — folder sources: each **file** becomes a key
+  named after the file with its extension stripped (a dotfile whose whole
+  name is its extension, like `.env`, keeps the full name), holding that
+  file's parsed content, instead of merging into the parent.
+- **`dirname_as_key`** — folder sources: each **subfolder** that is
+  scanned (per `dir_depth`) becomes a key and everything under it merges
+  below it.
+- **`sheetname_as_key`** — spreadsheet formats only (applies to folder
+  and single-file sources alike): a workbook parses to an object keyed by
+  sheet name — see the spreadsheet section.
+
+Single-file and string path sources ignore `filename_as_key`/
+`dirname_as_key` (they merge into the root as always); `sheetname_as_key`
+still applies to a single-file workbook. Keys deep-merge on collision
+(`a.yml` vs a folder `a/`), so `order` decides the winner. When
+`filename_as_key` is on, extension handling per file is: claimed → parse
+normally; extension-less and `auto_no_ext_files: true` (named to avoid
+confusion with the table `auto` id it reuses) → the trimmed content goes
+through the table `auto` detection; otherwise unclaimed → skipped when
+`ignore_unknown_ext` (default), else `Error::Parse`. When
+`filename_as_key` is off, extension-less/unknown files are always skipped
+(no key to contribute under). `auto_no_ext_files`/`ignore_unknown_ext`
+are meaningful only with `filename_as_key`.
+
+**The `tree` Cargo feature is only a default-preset.** It compiles no new
+capability — the keying fields above work with or without it. What it
+does is flip `Options::default()`: with `tree` on, the default becomes
+`filename_as_key: true, dirname_as_key: true, sheetname_as_key: true,
+dir_depth: -1` (tree-shaped loading); with it off, the flat default
+(`false`/`false`/`false`/`1`). So an app that wants tree-by-default
+enables the feature and keeps using `Options::default()`; anyone else
+sets the fields explicitly. There is **no** `Options::tree()` constructor.
+Implemented as `cfg!(feature = "tree")` in the `Default` impl. This is
+the **one deliberate exception** to the "no option-flipping" principle
+(see design principles) — accepted because the keying is a first-class
+part of the plain-data surface, not a silently-unioned capability. Two
+consequences the code handles: (1) `cli` does **not** enable `tree`, so
+the binary stays flat-by-default, and `src/main.rs` additionally pins an
+explicit flat baseline so even a `--features cli,tree` build's CLI is
+flat unless `--tree`/`--*-as-key` is passed; (2) tests build fixture
+cases from an explicit flat `common::base()` (not `Options::default()`)
+so they hold under `--all-features` (which turns `tree` on). The CLI
+`--tree` sets the four fields (and `--no-tree` resets them); the four are
+also individually exposed as `--filename-as-key`, `--dirname-as-key`,
+`--sheetname-as-key` and `--dir-depth <n>` (an integer; `--no-` forms on
+the booleans).
 
 ### Table stage
 
@@ -470,6 +520,28 @@ bigint beyond the target type is not representable → auto falls back to
 string, explicit ids error). Radix/bigint forms convert to floats
 through integers.
 
+**Relaxed numeric fallback (feature `numeric`, explicit numeric ids only
+— never `auto`; owner, 2026-07-22).** For an **explicit** numeric cell
+(`i8`–`i64`, `u8`–`u64`, `i128`, `u128`, `f32`/`f64`) that the standard
+literal parse above cannot turn into a number, one last recovery pass
+runs so human/spreadsheet notation still loads: thousands separators
+(`1,000.1`, and spaces `10 234 345.111` → `10234345.111`), a leading
+currency symbol (`$123.12`; also `€`/`£`/`¥` — any non-digit is dropped),
+and fullwidth digits (`０-９`). The steps are fixed: **(a)** map fullwidth
+digits `０-９` to `0-9`; **(b)** keep only ASCII digits, the **last** `.`
+(the decimal point) and the **first** `-` (the sign), dropping every
+other character (commas, spaces, currency, stray dots/minuses); then
+parse the result under the cell's own type (so a fraction still fails an
+integer id, and an out-of-range value still errors). `auto` never runs
+this pass — `1,000.1`/`$5` stay strings under auto — and it is compiled
+out entirely without the `numeric` feature. It runs only after the
+literal forms above have failed, and it does **not** interpret radix or
+BigInt markers (its digit-only filter would strip an `0x`/`n`), so those
+forms are handled solely by the primary parse. (The pass is
+intentionally locale-naive: the last dot is always the decimal, so
+European `1.000,50` is not special-cased — reach for a `CustomFormat`
+when a locale rule is needed.)
+
 ### Spreadsheet formats (features `excel`, `ods`)
 
 Both are table-shaped **binary** formats read with `calamine` (pinned
@@ -498,19 +570,29 @@ else about type ids, `dot_key` or merging is spreadsheet-specific.
   `Options` fields, both default `true`:
   - `ignore_hidden_sheets` — skip sheets marked hidden in the workbook
     (xlsx `hidden`/`veryHidden`; ods `table:display="false"`).
-  - `ignore_sheet_prefix` — skip sheets whose name starts with `#`, `.`
+  - `ignore_commented_sheets` — skip sheets whose name starts with `#`, `.`
     or `_`.
-- **`tree: false` (merge mode):** of the remaining sheets, exactly the
-  one named `config` (exact, case-sensitive) parses; every other sheet
-  is ignored. A workbook with no `config` sheet contributes nothing
-  (Null root) — same rule as an empty file.
-- **`tree: true`:** every remaining sheet parses and the workbook's
-  value is an object keyed by sheet name — `a/b.xlsx` with sheets `c`,
-  `d` loads as `{a: {b: {c: …, d: …}}}`. This is the parse result, so it
-  applies wherever the workbook appears (a single-file source under
-  `tree: true` merges the sheet-keyed object into the root); sheet keys
-  deep-merge like any keys and `case_sensitive` applies. No sheets left
-  after filtering → Null (contributes nothing).
+- **`sheetname_as_key: false` (default) — each sheet is a file (owner,
+  2026-07-22):** every remaining sheet parses and they all **deep-merge**
+  into one value, in `order` applied to the sheet names (sheets have no
+  folder/file distinction, so `FoldersFirstAlphabetic` sorts them
+  alphabetically), later sheets overriding earlier ones — exactly how
+  several files in a folder merge. (This replaced the old "only the sheet
+  named `config`" rule.) Two db sheets are two arrays, so the later one
+  replaces (merge rule 2); object-producing sheets deep-merge key by key.
+  `case_sensitive` folds sheet keys the same way the traced file merge
+  does (helper `deep_merge` in `src/format/sheet.rs`, mirroring the
+  loader). No sheets left after filtering → Null (contributes nothing).
+- **`sheetname_as_key: true`:** every remaining sheet parses and the
+  workbook's value is an object keyed by sheet name — a `b.xlsx` with
+  sheets `c`, `d` parses to `{c: …, d: …}` (and under
+  `filename_as_key`/`dirname_as_key` that object nests below the file and
+  folder keys, so `a/b.xlsx` gives `{a: {b: {c: …, d: …}}}`). This is the
+  parse result, so it applies wherever the workbook appears (a
+  single-file source with `sheetname_as_key: true` merges the sheet-keyed
+  object into the root); sheet keys deep-merge like any keys and
+  `case_sensitive` applies. No sheets left after filtering → Null
+  (contributes nothing).
 - **Explicit sheet (table sources):** a `(format, path, sheet, layout)`
   source reads exactly that sheet with that layout, skips the ignore
   filters, errors when the sheet is missing, and merges under the sheet
@@ -531,7 +613,7 @@ else about type ids, `dot_key` or merging is spreadsheet-specific.
   non-zero); duration-formatted cells → `hh:mm:ss[.mmm]` of the total.
   Formula cells contribute their cached result; error cells (`#DIV/0!`
   …) are `Error::Parse`.
-- CLI: `--ignore-sheet-prefix` / `--ignore-hidden-sheets` (+ `--no-`
+- CLI: `--ignore-commented-sheets` / `--ignore-hidden-sheets` (+ `--no-`
   forms). Neither format is an output format (`-f excel` stays unknown).
 - Binary fixtures are generated, not hand-edited: `tools/gen-sheets`
   (a standalone zero-dependency Rust crate — it hand-writes stored-entry
@@ -570,11 +652,14 @@ vs single file detected at load time); default source is `./config`. The
 CLI exposes **every `Options` field** as a flag, so `--help` is the
 canonical flag reference (README only points at it — and at
 `src/main.rs`): output flags `-f`/`--format`, `-o`/`--output`,
-`--trace`; `--order <id>` (`Order::from_id`); and one flag per boolean
-option (`--recursive`, `--flat`, `--dot-key`, `--case-sensitive`,
-`--tree`, `--auto-files`, `--ignore-unknown-ext`,
-`--ignore-sheet-prefix`, `--ignore-hidden-sheets`), each with a
-`--no-<name>` counterpart. Value flags accept `--flag v` or `--flag=v`.
+`--trace`; `--order <id>` (`Order::from_id`); `--dir-depth <n>` (an
+integer); one flag per boolean option (`--filename-as-key`,
+`--dirname-as-key`, `--sheetname-as-key`, `--dot-key`,
+`--case-sensitive`, `--auto-no-ext-files`, `--ignore-unknown-ext`,
+`--ignore-commented-sheets`, `--ignore-hidden-sheets`), each with a
+`--no-<name>` counterpart; and the `--tree` preset (sets the three
+`*_as_key` flags true + `dir_depth = -1`; `--no-tree` resets them). Value
+flags accept `--flag v` or `--flag=v`.
 Neither `formats` nor any table setting is exposed (the `cli` feature
 enables all formats; csv is positional-only — a header is a
 `CustomFormat`, which the CLI cannot register — and table sources /
@@ -607,7 +692,11 @@ variant expectations. Error cases (`csv_bad`) have `config/` only.
 `multi_sources/` is the one non-standard case. Shared helpers in
 `tests/common/mod.rs`: `check(case, options)` asserts
 `serde_json::to_value(trace())` against expect.debug.json and `load()`
-against expect.json. Fixture-dependent tests are
+against expect.json; `base()` is an explicit **flat** `Options` baseline
+(keying off, `dir_depth: 1`) that fixture cases build on instead of
+`Options::default()`, so their expectations hold even under
+`--all-features` (where the `tree` feature flips the default keying on).
+`loader(sources)` uses `base()` too. Fixture-dependent tests are
 `#[cfg]`-gated on the features their fixtures need so every
 feature-combination build stays green (watch interactions: `inet`
 implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
@@ -617,11 +706,17 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   override), jsonc, empty, missing-folder error, struct
   deserialization, typed `TracedValue` assertions, `Value`
   accessors/indexing, `format_id` derivation.
-- `tests/options.rs` — recursive_off/nest/flat, order_folders_first,
-  order_alphabetic, merge_order_reverse, case_insensitive, csv_dot_key,
-  csv_flat_key, tree mode (tree_basic / tree_auto / tree_unknown /
-  tree_order / tree_order_reverse, typed ipv4 assertion, strict
-  unknown-ext error, `Unsupported` without the feature).
+- `tests/options.rs` — scan depth (`dir_depth: 0` skips subdirs,
+  `dir_depth: -1` flat-scans every level), `dirname_as_key` nesting,
+  order_folders_first, order_alphabetic, merge_order_reverse,
+  case_insensitive, csv_dot_key, csv_flat_key, folder/file keying
+  (tree_basic / tree_auto / tree_unknown / tree_order /
+  tree_order_reverse, typed ipv4 assertion, strict unknown-ext error) —
+  keying needs no feature, so this `mod tree` runs on any build — and the
+  `tree`-feature default flip (`tree_feature_flips_defaults` /
+  `default_is_flat_without_tree`). Fixture cases build on the explicit
+  flat `common::base()`, not `Options::default()`, so they hold under
+  `--all-features` (which turns `tree` on).
 - `tests/formats.rs` — csv table schema (scalars + aliases, auto +
   leading-zero rule, numeric literals on/off, `i128`/`u128` typed cells
   + auto-never-widens, `bool` two-way tokens + strict case-insensitive
@@ -647,13 +742,16 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   custom_md, toml/ini/env basics, toml datetime following the `datetime`
   feature — each behind its format's `#[cfg(feature)]`. Spreadsheet
   cases (all sheet content is db-shaped, the spreadsheet default
-  layout): excel_basic (a db config sheet — typed columns, an auto
-  column, a dotted key column, a sparse record — + ignored
-  named/prefixed/hidden sheets + a workbook with no config sheet),
-  excel_hidden_config /
+  layout): excel_basic (merge mode — `config` is the only non-ignored
+  sheet: typed columns, an auto column, a dotted key column, a sparse
+  record — + a `_`/`#`-prefixed and a hidden sheet skipped + a second
+  workbook whose only sheet is ignored contributing nothing) plus
+  `merge_mode_merges_every_sheet_like_a_file` (reuses the excel_tree
+  workbook: two visible db sheets merge in name order, the later array
+  winning), excel_hidden_config /
   excel_hidden_config_off (the `ignore_hidden_sheets` variant pair),
-  excel_tree / excel_tree_prefix_off (tree mode sheet keys, the
-  `ignore_sheet_prefix` variant pair; gated on `tree` too),
+  excel_tree / excel_tree_prefix_off (`sheetname_as_key` sheet keys, the
+  `ignore_commented_sheets` variant pair; keying needs no feature),
   excel_datetime (serial date/time/dt cells typed by a db type row;
   gated on `datetime`),
   excel_bad (config only: bad typed cell on a padded grid asserts real
@@ -823,10 +921,12 @@ paths).
   "cidr"]`; `macaddr = ["macaddr8"]`; `numeric` (off by default) gates
   extended table numeric literals; the `json` table cell id is gated on
   `json` and the `jsonc` cell id on `jsonc` (one-to-one with the file
-  formats); `tree` gates tree mode; `excel` and `ods`
-  (both `dep:calamine`) are format features like any other; `cli`
-  implies all formats + `datetime`, `inet`, `macaddr`, `uuid`,
-  `numeric`, `tree`. `default = ["jsonc"]`.
+  formats); `tree` is a **default-preset** (no code gate — it flips the
+  keying defaults in `Options::default()` via `cfg!`, see "Folder
+  keying"); `excel` and `ods` (both `dep:calamine`) are format features
+  like any other; `cli` implies all formats + `datetime`, `inet`,
+  `macaddr`, `uuid`, `numeric` — **not** `tree` (so the binary is
+  flat-by-default). `default = ["jsonc"]`.
 - Crate naming (decided 2026-07-05): the crates.io package is
   `c4-config` (verified available; `c4` itself is taken), while the lib
   target and the binary keep the name `c4` — users `cargo add c4-config`

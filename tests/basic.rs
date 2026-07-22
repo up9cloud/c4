@@ -6,19 +6,19 @@
 mod common;
 
 #[allow(unused_imports)] // unused in single-format builds
-use common::{check, fx, loader};
+use common::{base, check, fx, loader};
 
 #[cfg(all(any(feature = "json", feature = "jsonc"), feature = "yaml"))]
 #[test]
 fn simple_mixed_formats() {
-    check("simple", c4::Options::default());
+    check("simple", base());
 }
 
 #[cfg(any(feature = "json", feature = "jsonc"))]
 #[test]
 fn deep_merge_in_alphabetic_order() {
     // a.json then b.json: objects merge recursively, arrays/scalars replace
-    check("merge_order", c4::Options::default());
+    check("merge_order", base());
 }
 
 #[cfg(all(any(feature = "json", feature = "jsonc"), feature = "yaml"))]
@@ -26,31 +26,37 @@ fn deep_merge_in_alphabetic_order() {
 fn same_basename_merges_in_filename_order() {
     // formats carry no override order: app.json sorts before app.yml, so
     // the yml file simply loads later and wins
-    check("precedence", c4::Options::default());
+    check("precedence", base());
 }
 
 #[cfg(feature = "jsonc")]
 #[test]
 fn jsonc_comments_and_trailing_commas() {
-    check("jsonc", c4::Options::default());
+    check("jsonc", base());
 }
 
 #[test]
 fn empty_folder_is_empty_object() {
     // the folder only holds .gitkeep, whose extension no format claims
-    check("empty", c4::Options::default());
+    check("empty", base());
 }
 
 #[cfg(all(any(feature = "json", feature = "jsonc"), feature = "yaml"))]
 #[test]
 fn load_takes_a_folder_or_a_file() {
-    // a folder path
-    let v: serde_json::Value = c4::load(fx("simple/config")).unwrap();
-    assert_eq!(v, common::expect("simple"));
-
-    // an existing file loads as a single file source
+    // an existing file loads as a single file source (single-file sources
+    // are unaffected by the keying options / the `tree` default)
     let v: serde_json::Value = c4::load(fx("simple/config/app.json")).unwrap();
     assert_eq!(v, serde_json::json!({ "name": "c4", "port": 8080 }));
+
+    // a folder path — c4::load uses Options::default(), which the `tree`
+    // feature flips to keyed loading, so only assert the flat merge when
+    // tree is off
+    #[cfg(not(feature = "tree"))]
+    {
+        let v: serde_json::Value = c4::load(fx("simple/config")).unwrap();
+        assert_eq!(v, common::expect("simple"));
+    }
 }
 
 #[test]

@@ -72,7 +72,7 @@
 //!             ("jsonc", ["json", "jsonc"]).into(),            // format id + custom extensions
 //!             (Format::Csv, ["csv"], "db").into(),            // + layout: all csv = record grids
 //!         ],
-//!         recursive: true,
+//!         dir_depth: -1, // scan every subdirectory level
 //!         ..Options::default()
 //!     })
 //!     .load()?;
@@ -144,7 +144,7 @@
 //! | `toml` / `ini` / `env` / `csv` | those file formats |
 //! | `excel` | Excel workbooks (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`) |
 //! | `ods` | OpenDocument spreadsheets (`.ods`) |
-//! | `tree` | tree mode ([`Options::tree`]) |
+//! | `tree` | default-preset: flips [`filename_as_key`](Options::filename_as_key), [`dirname_as_key`](Options::dirname_as_key), [`sheetname_as_key`](Options::sheetname_as_key) on and [`dir_depth`](Options::dir_depth) to `-1` in [`Options::default`] (the fields work without it) |
 //! | `datetime` (= `date` + `time`) | the `dt` table type |
 //! | `date`, `time` | the `date` / `time` table types |
 //! | `ipv4`, `ipv6` | the `ipv4` / `ipv6` table types |
@@ -178,11 +178,24 @@
 //! | `excel` | `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | `excel` |
 //! | `ods`   | `.ods`             | `ods`   |
 //!
-//! # Tree mode
+//! # Folder shape: keys and depth
 //!
-//! With `tree: true` (feature `tree`) a folder is not merged — its shape
-//! becomes the config: every subfolder is a key, and every file a key
-//! named after it (extension stripped):
+//! By default a folder's files deep-merge into one flat value, scanning
+//! the folder plus one subdirectory level ([`dir_depth`](Options::dir_depth):
+//! `-1` for unlimited, `0` for the folder only). Turning subfolders and
+//! files into **keys** makes the folder's *shape* the config instead:
+//!
+//! - [`dirname_as_key`](Options::dirname_as_key) — each subfolder becomes
+//!   a key.
+//! - [`filename_as_key`](Options::filename_as_key) — each file becomes a
+//!   key named after it (extension stripped).
+//! - [`sheetname_as_key`](Options::sheetname_as_key) — each spreadsheet
+//!   sheet becomes a key.
+//!
+//! These fields work on any build; the `tree` **feature** is just a
+//! convenience that flips all three on (and `dir_depth` to `-1`) in
+//! [`Options::default`], so an app that wants tree-shaped loading enables
+//! the feature and keeps using the defaults.
 //!
 //! ```text
 //! config/a/b.json = {"c": 1}   ->  { "a": { "b": { "c": 1 } },
@@ -191,9 +204,12 @@
 //!
 //! ```no_run
 //! # fn main() -> Result<(), c4::Error> {
+//! // explicit keying — or, with the `tree` feature, just Options::default()
 //! let value: c4::Value = c4::Loader::new(c4::Options {
 //!         sources: vec!["./config".into()],
-//!         tree: true,
+//!         filename_as_key: true,
+//!         dirname_as_key: true,
+//!         dir_depth: -1,
 //!         ..c4::Options::default()
 //!     })
 //!     .load()?;
@@ -202,9 +218,10 @@
 //! # }
 //! ```
 //!
-//! The full rules — recursion, key collisions, extension handling — are
-//! on [`Options::tree`] (with [`Options::auto_files`] and
-//! [`Options::ignore_unknown_ext`] for the edge cases).
+//! Key collisions deep-merge (so [`order`](Options::order) decides the
+//! winner); extension handling for keyed files is on
+//! [`auto_no_ext_files`](Options::auto_no_ext_files) and
+//! [`ignore_unknown_ext`](Options::ignore_unknown_ext).
 //!
 //! # Table formats
 //!
@@ -350,14 +367,16 @@
 //! from files only — a `(Format::Excel, text)` string source is an
 //! error.
 //!
-//! Which sheets are read:
+//! Which sheets are read — each sheet is treated like a file:
 //!
-//! - `tree: false` (default): exactly the sheet named `config`; a
-//!   workbook without one contributes nothing.
-//! - `tree: true`: every sheet becomes a key under the file's key — see
-//!   [`Options::tree`].
+//! - `sheetname_as_key: false` (default): every non-ignored sheet parses
+//!   and they all **deep-merge** into one value, in
+//!   [`order`](Options::order) by sheet name (later overrides earlier). A
+//!   workbook with no sheets left contributes nothing.
+//! - `sheetname_as_key: true`: every sheet becomes a key instead — see
+//!   [`Options::sheetname_as_key`].
 //! - Prefixed (`#`/`.`/`_`) and hidden sheets are skipped — see
-//!   [`Options::ignore_sheet_prefix`] and
+//!   [`Options::ignore_commented_sheets`] and
 //!   [`Options::ignore_hidden_sheets`].
 //! - A table source that names a sheet (always the 4-tuple) reads
 //!   exactly that sheet and merges it under the sheet name as key — see

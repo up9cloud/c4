@@ -53,7 +53,7 @@ pub enum Source {
     /// non-table format are [`Error::Parse`](crate::Error::Parse) (the
     /// path error hints that in-code text belongs in a string source). `sheet` (spreadsheets only;
     /// naming one on csv is an error) reads exactly that sheet —
-    /// bypassing the `ignore_sheet_prefix` / `ignore_hidden_sheets`
+    /// bypassing the `ignore_commented_sheets` / `ignore_hidden_sheets`
     /// filters, erroring when it is missing — and merges its value
     /// **under the sheet name as key**, so several sources can read
     /// different sheets of one workbook without clobbering each other.

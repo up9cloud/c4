@@ -7,10 +7,11 @@
 //!
 //! Sheet selection: non-worksheet sheets (chart/dialog/macro/VBA) are
 //! always skipped; `Options.ignore_hidden_sheets` and
-//! `Options.ignore_sheet_prefix` filter the rest. With `tree: false`
-//! exactly the sheet named `config` parses (a workbook without one
-//! contributes nothing); with `tree: true` every remaining sheet parses
-//! and the workbook becomes an object keyed by sheet name.
+//! `Options.ignore_commented_sheets` filter the rest. Each remaining
+//! sheet is treated like a file: with `sheetname_as_key: false` they all
+//! deep-merge into one value (in `order` by sheet name); with
+//! `sheetname_as_key: true` the workbook becomes an object keyed by sheet
+//! name. No sheets left → the workbook contributes nothing.
 
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -85,24 +86,85 @@ fn parse_workbook(
         return Ok(Value::Object(BTreeMap::from([(name.to_owned(), value)])));
     }
 
-    let mut kept = sheets.into_iter().filter(|sheet| keep(sheet, options));
-    if options.tree {
-        // every sheet is a key; an empty workbook contributes nothing
+    // every non-ignored sheet parses; a workbook with none contributes
+    // nothing (Null)
+    let mut names: Vec<String> = sheets
+        .into_iter()
+        .filter(|sheet| keep(sheet, options))
+        .map(|sheet| sheet.name)
+        .collect();
+    if options.sheetname_as_key {
+        // each sheet is a key (names are unique, so order is immaterial)
         let mut root = BTreeMap::new();
-        for sheet in kept {
-            let value = parse_sheet(&mut workbook, &sheet.name, layout, path, options)?;
-            root.insert(sheet.name, value);
+        for name in names {
+            let value = parse_sheet(&mut workbook, &name, layout, path, options)?;
+            root.insert(name, value);
         }
         if root.is_empty() {
             return Ok(Value::Null);
         }
         Ok(Value::Object(root))
     } else {
-        // merge mode reads exactly the sheet named `config`
-        match kept.find(|sheet| sheet.name == "config") {
-            Some(sheet) => parse_sheet(&mut workbook, &sheet.name, layout, path, options),
-            None => Ok(Value::Null),
+        // each sheet is treated like a file: they all deep-merge into one
+        // value, in `order` applied to the sheet names, later overriding
+        // earlier
+        sort_sheet_names(&mut names, options.order);
+        let mut merged = Value::Object(BTreeMap::new());
+        let mut any = false;
+        for name in names {
+            let value = parse_sheet(&mut workbook, &name, layout, path, options)?;
+            if matches!(value, Value::Null) {
+                continue; // an empty sheet contributes nothing
+            }
+            any = true;
+            deep_merge(&mut merged, value, !options.case_sensitive);
         }
+        Ok(if any { merged } else { Value::Null })
+    }
+}
+
+/// Deep-merge `incoming` into `target`, mirroring the loader's merge
+/// (objects recurse, everything else replaces). When `lowercase`, object
+/// keys fold to lowercase — the same normalization the traced merge
+/// applies for `case_sensitive: false`. Merges a workbook's sheets (each
+/// treated like a file) into one value.
+fn deep_merge(target: &mut Value, incoming: Value, lowercase: bool) {
+    match (target, incoming) {
+        (Value::Object(entries), Value::Object(inc)) => {
+            for (key, value) in inc {
+                let key = if lowercase { key.to_lowercase() } else { key };
+                match entries.get_mut(&key) {
+                    Some(slot) => deep_merge(slot, value, lowercase),
+                    None => {
+                        entries.insert(key, fold_keys(value, lowercase));
+                    }
+                }
+            }
+        }
+        (slot, value) => *slot = fold_keys(value, lowercase),
+    }
+}
+
+/// Recursively lowercase an incoming subtree's object keys (no-op unless
+/// `lowercase`), matching how the traced merge records fresh leaves.
+fn fold_keys(value: Value, lowercase: bool) -> Value {
+    match value {
+        Value::Object(map) if lowercase => Value::Object(
+            map.into_iter()
+                .map(|(k, v)| (k.to_lowercase(), fold_keys(v, lowercase)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// Order sheet names for merging, mirroring the folder [`Order`] rules
+/// (sheets have no folder/file distinction, so `FoldersFirstAlphabetic`
+/// is just alphabetic).
+fn sort_sheet_names(names: &mut [String], order: crate::Order) {
+    match order {
+        crate::Order::ReverseAlphabetic => names.sort_by(|a, b| b.cmp(a)),
+        _ => names.sort(),
     }
 }
 
@@ -113,7 +175,7 @@ fn keep(sheet: &Sheet, options: &Options) -> bool {
     if options.ignore_hidden_sheets && sheet.visible != SheetVisible::Visible {
         return false;
     }
-    if options.ignore_sheet_prefix && sheet.name.starts_with(['#', '.', '_']) {
+    if options.ignore_commented_sheets && sheet.name.starts_with(['#', '.', '_']) {
         return false;
     }
     true

@@ -1,6 +1,6 @@
 [package]
 name = "c4-config"
-version = "0.3.3"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Load a folder of config files (jsonc/yaml/json/toml/ini/env/csv/xlsx/ods) into one deep-merged value"
@@ -51,7 +51,7 @@ tree = []
 cli = [
     "json", "jsonc", "yaml", "toml", "ini", "env", "csv",
     "excel", "ods",
-    "datetime", "inet", "macaddr", "uuid", "numeric", "tree",
+    "datetime", "inet", "macaddr", "uuid", "numeric",
 ]
 
 [[bin]]

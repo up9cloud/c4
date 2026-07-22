@@ -27,12 +27,23 @@ pub fn expect_debug(case: &str) -> Json {
     read(format!("tests/fixtures/{case}/expect.debug.json"))
 }
 
-/// A loader over the given sources with otherwise-default options.
-pub fn loader(sources: Vec<c4::Source>) -> c4::Loader {
-    c4::Loader::new(c4::Options {
-        sources,
+/// An explicitly **flat** baseline, independent of the `tree` feature
+/// (which flips `Options::default()`'s folder/file/sheet keying on and
+/// scans every depth). Fixture cases build on this so their expectations
+/// hold under every feature combination — including `--all-features`.
+pub fn base() -> c4::Options {
+    c4::Options {
+        filename_as_key: false,
+        dirname_as_key: false,
+        sheetname_as_key: false,
+        dir_depth: 1,
         ..c4::Options::default()
-    })
+    }
+}
+
+/// A loader over the given sources with otherwise-flat options.
+pub fn loader(sources: Vec<c4::Source>) -> c4::Loader {
+    c4::Loader::new(c4::Options { sources, ..base() })
 }
 
 /// Assert both the traced and the plain load of a case's `config/`
