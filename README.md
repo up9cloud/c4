@@ -81,8 +81,9 @@ let cfg: MyConfig = c4::load("config")?;
 
 The full reference — mixed sources and every `Options` field, the Cargo
 features, format/extension mapping, merge rules, folder shape (depth and
-folder/file/sheet keying), typed table cells, custom formats and
-provenance tracing — lives in the crate docs, with runnable examples:
+folder/file/sheet keying), commented-out names and keys (`#`/`_`), typed
+table cells, custom formats and provenance tracing — lives in the crate
+docs, with runnable examples:
 
 **📖 [docs.rs/c4-config](https://docs.rs/c4-config)**
 

@@ -28,7 +28,7 @@ Options (mirror Options; each boolean also has a --no-<name> form):
   --filename-as-key     make each file a key named after it (default off)
   --dirname-as-key      make each subfolder a key (default off)
   --sheetname-as-key    spreadsheets: make each sheet a key (default off;
-                        off reads only the 'config' sheet)
+                        off merges every sheet like several files)
   --tree                preset: --filename-as-key --dirname-as-key
                         --sheetname-as-key --dir-depth -1
   --dot-key             expand dotted keys a.b.c -> {a:{b:{c}}} (default on)
@@ -37,8 +37,14 @@ Options (mirror Options; each boolean also has a --no-<name> form):
                         reverse_alphabetic  (also: folders_first, reverse)
   --auto-no-ext-files  keyed files: auto-detect extension-less files (on)
   --ignore-unknown-ext  keyed files: skip unknown-extension files (on)
-  --ignore-commented-sheets
-                        spreadsheets: skip sheets named #*/.*/_* (default on)
+  --ignore-commented-data-keys
+                        drop parsed data keys named #*/_* (default on)
+  --ignore-commented-filenames
+                        skip scanned files named #*/_* (default on)
+  --ignore-commented-dirnames
+                        skip scanned folders named #*/_* (default on)
+  --ignore-commented-sheetnames
+                        spreadsheets: skip sheets named #*/_* (default on)
   --ignore-hidden-sheets
                         spreadsheets: skip hidden sheets (default on)
   -h, --help            show this help
@@ -58,9 +64,9 @@ Notes:
   csv is positional key,value[,format]; for a header row or renamed/
   reordered columns, use a CustomFormat (see the csv-header example).
   Spreadsheets (xlsx/xlsm/xlsb/xls/ods) parse each sheet as a db record
-  grid (keys row, types row, data rows); the sheet named 'config' is
-  read (with --sheetname-as-key, every sheet becomes a key). They are
-  input-only formats (-f excel is not valid output).
+  grid (keys row, types row, data rows); every sheet is read and merged
+  like a file (with --sheetname-as-key, each becomes a key instead).
+  They are input-only formats (-f excel is not valid output).
 ";
 
 /// Output serializer. Jsonc collapses into Json; env and ini share the
@@ -184,8 +190,14 @@ fn run() -> Result<(), String> {
             "--no-auto-no-ext-files" => opts.auto_no_ext_files = false,
             "--ignore-unknown-ext" => opts.ignore_unknown_ext = true,
             "--no-ignore-unknown-ext" => opts.ignore_unknown_ext = false,
-            "--ignore-commented-sheets" => opts.ignore_commented_sheets = true,
-            "--no-ignore-commented-sheets" => opts.ignore_commented_sheets = false,
+            "--ignore-commented-data-keys" => opts.ignore_commented_data_keys = true,
+            "--no-ignore-commented-data-keys" => opts.ignore_commented_data_keys = false,
+            "--ignore-commented-filenames" => opts.ignore_commented_filenames = true,
+            "--no-ignore-commented-filenames" => opts.ignore_commented_filenames = false,
+            "--ignore-commented-dirnames" => opts.ignore_commented_dirnames = true,
+            "--no-ignore-commented-dirnames" => opts.ignore_commented_dirnames = false,
+            "--ignore-commented-sheetnames" => opts.ignore_commented_sheetnames = true,
+            "--no-ignore-commented-sheetnames" => opts.ignore_commented_sheetnames = false,
             "--ignore-hidden-sheets" => opts.ignore_hidden_sheets = true,
             "--no-ignore-hidden-sheets" => opts.ignore_hidden_sheets = false,
             "-h" | "--help" => {

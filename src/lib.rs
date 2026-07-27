@@ -223,6 +223,46 @@
 //! [`auto_no_ext_files`](Options::auto_no_ext_files) and
 //! [`ignore_unknown_ext`](Options::ignore_unknown_ext).
 //!
+//! # Commented-out names and keys
+//!
+//! A name or key starting with `#` or `_` reads as commented out, so
+//! draft files, work-in-progress folders, scratch sheets and one-off keys
+//! can sit next to live config without loading (`.` is **not** a prefix —
+//! `.env` is an ordinary file):
+//!
+//! ```text
+//! config/app.json  = {"port": 8080, "_note": "wip"}  ->  { "port": 8080 }
+//! config/_old.json = {"port": 1}                         (skipped)
+//! config/_wip/*                                          (skipped)
+//! ```
+//!
+//! Four options, all default `true`, split by what they filter — the
+//! **data** a source parses to, or the **names** c4 scans:
+//! [`ignore_commented_data_keys`](Options::ignore_commented_data_keys),
+//! [`ignore_commented_filenames`](Options::ignore_commented_filenames),
+//! [`ignore_commented_dirnames`](Options::ignore_commented_dirnames) and
+//! [`ignore_commented_sheetnames`](Options::ignore_commented_sheetnames).
+//! The three name options filter **scanning** only — a file, folder or
+//! sheet you name yourself always loads (naming a commented folder scans
+//! it, though commented names *inside* it are still skipped) — and they,
+//! not the data-key option, govern the keys made from names
+//! ([`filename_as_key`](Options::filename_as_key) and friends).
+//!
+//! ```
+//! use std::collections::BTreeMap;
+//!
+//! # fn main() -> Result<(), c4::Error> {
+//! let value: c4::Value = c4::Loader::new(c4::Options {
+//!         sources: vec![(BTreeMap::from([("port", 8080), ("_note", 1)]),).into()],
+//!         ..c4::Options::default()
+//!     })
+//!     .load()?;
+//! assert_eq!(value["port"].as_i64(), Some(8080));
+//! assert!(value["_note"].is_null());
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! # Table formats
 //!
 //! Table files (csv, and each spreadsheet sheet) parse under a
@@ -373,10 +413,11 @@
 //!   and they all **deep-merge** into one value, in
 //!   [`order`](Options::order) by sheet name (later overrides earlier). A
 //!   workbook with no sheets left contributes nothing.
-//! - `sheetname_as_key: true`: every sheet becomes a key instead — see
-//!   [`Options::sheetname_as_key`].
-//! - Prefixed (`#`/`.`/`_`) and hidden sheets are skipped — see
-//!   [`Options::ignore_commented_sheets`] and
+//! - `sheetname_as_key: true`: every sheet becomes a key instead (through
+//!   the same [`dot_key`](Options::dot_key) expansion as any key, so a
+//!   sheet named `a.b` nests) — see [`Options::sheetname_as_key`].
+//! - Commented (`#`/`_`) and hidden sheets are skipped — see
+//!   [`Options::ignore_commented_sheetnames`] and
 //!   [`Options::ignore_hidden_sheets`].
 //! - A table source that names a sheet (always the 4-tuple) reads
 //!   exactly that sheet and merges it under the sheet name as key — see

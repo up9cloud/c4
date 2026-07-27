@@ -82,7 +82,9 @@ pub(crate) fn parse_table_file(
                 )));
             }
             let text = std::fs::read_to_string(path).map_err(Error::Io)?;
-            csv::parse(&text, layout, path, options)
+            let mut value = csv::parse(&text, layout, path, options)?;
+            strip_commented_data_keys(&mut value, options);
+            Ok(value)
         }
         #[cfg(feature = "excel")]
         Format::Excel => sheet::parse_excel(path, sheet_name, layout, options),
@@ -108,8 +110,8 @@ pub(crate) fn parse(
     path: &Path,
     options: &Options,
 ) -> Result<Value> {
-    let _ = (text, layout, options); // unused when few formats are compiled in
-    match format {
+    let _ = (text, layout); // unused when few formats are compiled in
+    let mut value = match format {
         // binary formats never come through the text pipeline; a string
         // source naming one lands here
         Format::Excel | Format::Ods => Err(Error::Parse {
@@ -135,7 +137,10 @@ pub(crate) fn parse(
             path: path.to_path_buf(),
             message: format!("format '{}' is not compiled into this build", other.id()),
         }),
-    }
+    }?;
+    // one data boundary: every text format's result is filtered here
+    strip_commented_data_keys(&mut value, options);
+    Ok(value)
 }
 
 /// Convert a parsed serde_json tree into a [`Value`] (strict json and the
@@ -262,6 +267,36 @@ fn insert_segments<'a>(
         target = &mut items[index];
     }
     insert_segments(target, segments, value);
+}
+
+/// Drop commented-out data keys (`#…`, `_…`) from a parse result when
+/// [`Options::ignore_commented_data_keys`] is on — recursively, through
+/// objects and through the objects inside arrays, so a `#memo` column
+/// disappears from every record of a db grid.
+///
+/// "Data" is the whole point of the split: this runs on the value one
+/// file, sheet, string or typed override parsed to, before any **name**
+/// key (filename/dirname/sheetname) wraps it. Those structural keys have
+/// their own `ignore_commented_*name*` options and must survive this
+/// pass.
+pub(crate) fn strip_commented_data_keys(value: &mut Value, options: &Options) {
+    if !options.ignore_commented_data_keys {
+        return;
+    }
+    strip(value);
+}
+
+fn strip(value: &mut Value) {
+    match value {
+        Value::Object(entries) => {
+            entries.retain(|key, _| !crate::options::is_commented(key));
+            for value in entries.values_mut() {
+                strip(value);
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(strip),
+        _ => {}
+    }
 }
 
 /// Plain-value deep merge (objects recurse, everything else replaces) —

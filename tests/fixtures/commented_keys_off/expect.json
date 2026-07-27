@@ -1,0 +1,15 @@
+{
+  "port": 8080,
+  "#note": "a commented-out key: the whole subtree goes",
+  "_tmp": { "x": 1 },
+  "db": {
+    "host": "localhost",
+    "_secret": "s"
+  },
+  "items": [
+    { "id": 1, "#memo": "records are filtered too" },
+    { "id": 2 }
+  ],
+  "#empty": {},
+  "leftover": { "#only": 1 }
+}

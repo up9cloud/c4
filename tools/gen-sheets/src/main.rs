@@ -94,8 +94,10 @@ fn main() {
         &hidden_config(),
     );
 
-    // excel_tree(+_prefix_off): every sheet becomes a key; prefixed sheets
-    // (#/./_) follow ignore_commented_sheets, hidden sheets stay ignored.
+    // excel_tree(+_prefix_off): every sheet becomes a key; commented
+    // sheets (#/_) follow ignore_commented_sheetnames, hidden sheets stay
+    // ignored. The `e.f` sheet is the dot_key case — sheet names go
+    // through insert_key, so it nests.
     let grid = |key: &'static str, ty: &'static str, value: Cell| {
         vec![(1, vec![S(key)]), (2, vec![S(ty)]), (3, vec![value])]
     };
@@ -103,8 +105,8 @@ fn main() {
         vec![
             ("c", false, grid("k1", "str", S("v1"))),
             ("d", false, grid("k2", "i32", N(2.0))),
+            ("e.f", false, grid("k3", "i32", N(5.0))),
             ("#x", false, grid("p", "i64", N(1.0))),
-            (".y", false, grid("p", "i64", N(2.0))),
             ("_z", false, grid("p", "i64", N(3.0))),
             ("h", true, grid("p", "i64", N(4.0))),
         ]
@@ -113,6 +115,13 @@ fn main() {
     write_xlsx(
         &fixtures.join("excel_tree_prefix_off/config/a/b.xlsx"),
         &tree_sheets(),
+    );
+
+    // excel_dot_sheet: `.` is not a comment prefix — a `.y` sheet is an
+    // ordinary sheet (merge mode, so its name is not a key).
+    write_xlsx(
+        &fixtures.join("excel_dot_sheet/config/app.xlsx"),
+        &[(".y", false, grid("p", "i64", N(2.0)))],
     );
 
     // excel_datetime: serial cells styled as datetime/date/time lower to

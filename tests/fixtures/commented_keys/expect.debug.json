@@ -1,0 +1,23 @@
+{
+  "port": {
+    "$id": "Leaf",
+    "value": 8080,
+    "source": "tests/fixtures/commented_keys/config/app.json",
+    "format": "i64"
+  },
+  "db": {
+    "host": {
+      "$id": "Leaf",
+      "value": "localhost",
+      "source": "tests/fixtures/commented_keys/config/app.json",
+      "format": "str"
+    }
+  },
+  "items": {
+    "$id": "Leaf",
+    "value": [{ "id": 1 }, { "id": 2 }],
+    "source": "tests/fixtures/commented_keys/config/app.json",
+    "format": "arr"
+  },
+  "leftover": {}
+}

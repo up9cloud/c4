@@ -2,7 +2,10 @@
   "a": {
     "b": {
       "c": { "$id": "Leaf", "value": [{ "k1": "v1" }], "source": "tests/fixtures/excel_tree/config/a/b.xlsx", "format": "arr" },
-      "d": { "$id": "Leaf", "value": [{ "k2": 2 }], "source": "tests/fixtures/excel_tree/config/a/b.xlsx", "format": "arr" }
+      "d": { "$id": "Leaf", "value": [{ "k2": 2 }], "source": "tests/fixtures/excel_tree/config/a/b.xlsx", "format": "arr" },
+      "e": {
+        "f": { "$id": "Leaf", "value": [{ "k3": 5 }], "source": "tests/fixtures/excel_tree/config/a/b.xlsx", "format": "arr" }
+      }
     }
   }
 }

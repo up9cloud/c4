@@ -1,0 +1,20 @@
+{
+  "hidden": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/commented_names/config/.hidden.json",
+    "format": "bool"
+  },
+  "port": {
+    "$id": "Leaf",
+    "value": 8080,
+    "source": "tests/fixtures/commented_names/config/app.json",
+    "format": "i64"
+  },
+  "sub": {
+    "$id": "Leaf",
+    "value": 1,
+    "source": "tests/fixtures/commented_names/config/sub/b.json",
+    "format": "i64"
+  }
+}

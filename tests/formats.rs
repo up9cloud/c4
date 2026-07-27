@@ -1004,13 +1004,22 @@ mod excel {
 
     #[test]
     fn merge_mode_merges_every_sheet_like_a_file() {
-        // b.xlsx has visible sheets c, d (and #x/.y/_z/hidden, all
-        // ignored). In merge mode both c and d parse and merge in `order`
-        // by sheet name — being db arrays, the later sheet (d) wins.
+        // b.xlsx has visible sheets c, d, e.f (and #x/_z/hidden, all
+        // ignored). In merge mode all three parse and merge in `order`
+        // by sheet name — being db arrays, the last sheet (e.f) wins.
+        // Merge mode keys nothing by sheet name, so dot_key never sees
+        // the name.
         let value: serde_json::Value = loader(vec![fx("excel_tree/config/a/b.xlsx").into()])
             .load()
             .unwrap();
-        assert_eq!(value, serde_json::json!([{ "k2": 2 }]));
+        assert_eq!(value, serde_json::json!([{ "k3": 5 }]));
+    }
+
+    #[test]
+    fn a_dot_prefixed_sheet_is_not_commented() {
+        // the comment prefixes are `#` and `_` only — a `.y` sheet is an
+        // ordinary sheet
+        check("excel_dot_sheet", base());
     }
 
     #[test]
@@ -1113,18 +1122,30 @@ mod excel {
 
         #[test]
         fn every_sheet_becomes_a_key() {
-            // a/b.xlsx sheets c,d → {a:{b:{c:…,d:…}}}; prefixed (#/./_)
-            // and hidden sheets are ignored by default
+            // a/b.xlsx sheets c, d, e.f → {a:{b:{c:…,d:…,e:{f:…}}}} —
+            // sheet names go through insert_key, so dot_key nests `e.f`;
+            // commented (#/_) and hidden sheets are ignored by default
             check("excel_tree", tree_options());
         }
 
         #[test]
-        fn prefixed_sheets_load_when_option_off() {
+        fn sheet_names_stay_literal_without_dot_key() {
             let options = c4::Options {
-                ignore_commented_sheets: false,
+                dot_key: false,
+                sources: vec![crate::common::fx("excel_tree/config/a/b.xlsx").into()],
                 ..tree_options()
             };
-            // #x/.y/_z become keys; the hidden sheet stays ignored
+            let value: serde_json::Value = c4::Loader::new(options).load().unwrap();
+            assert_eq!(value["e.f"], serde_json::json!([{ "k3": 5 }]));
+        }
+
+        #[test]
+        fn commented_sheets_load_when_option_off() {
+            let options = c4::Options {
+                ignore_commented_sheetnames: false,
+                ..tree_options()
+            };
+            // #x/_z become keys; the hidden sheet stays ignored
             check("excel_tree_prefix_off", options);
         }
     }

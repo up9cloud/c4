@@ -30,7 +30,7 @@ docs, with the lib-level section reduced to a short intro + a rust
 example + a ref (folder keying and the spreadsheet section are the
 models: the full rules sit on `Options::filename_as_key` /
 `dirname_as_key` / `sheetname_as_key` /
-`Options::ignore_commented_sheets`/`ignore_hidden_sheets`); and **every
+`Options::ignore_commented_sheetnames`/`ignore_hidden_sheets`); and **every
 `Options` field doc carries a rust code block** — runnable when it
 needs no files (value sources, `parse_table`), `no_run` otherwise. Its examples are real doctests and must run under the whole
 feature matrix, so runnable ones use only feature-agnostic pieces
@@ -244,7 +244,9 @@ own files plus one level (`config/*` and `config/a/*`, not
 `config/a/b/*`); `0` = the folder only; `-1` = unlimited (fully
 recursive). Whether the scanned folders/files become keys is the keying
 options below — with all keying off (the default), every scanned file
-just deep-merges into the root, folder names carrying no meaning.
+just deep-merges into the root, folder names carrying no meaning. Files
+and subfolders whose name starts with a comment prefix (`#`/`_`) are
+skipped while scanning — see "Commented names and keys".
 
 ### Folder keying (`tree` is a default-preset, not a gate — owner, 2026-07-22)
 
@@ -260,7 +262,19 @@ available on any build** (no feature gate, no `Error::Unsupported`):
   below it.
 - **`sheetname_as_key`** — spreadsheet formats only (applies to folder
   and single-file sources alike): a workbook parses to an object keyed by
-  sheet name — see the spreadsheet section.
+  sheet name — see the spreadsheet section. Sheet-name keys are the one
+  keying that goes through `dot_key` (owner, 2026-07-27) — see below.
+
+**`dot_key` and the keying options (owner, 2026-07-27).** A **sheet-name**
+key is inserted with the same `format::insert_key` every data key uses,
+so with `dot_key: true` a sheet named `a.b` nests (`{a: {b: …}}`) and the
+array suffixes apply (`items[]`); with `dot_key: false` the name is one
+literal key. This holds wherever a sheet becomes a key — `sheetname_as_key`
+and the sheet-name key of an explicit-sheet table source alike.
+**File and folder keys stay literal**: `a.b.yml` is the key `a.b` and a
+folder `x.y` is the key `x.y`, dot_key or not (file names carry dots for
+reasons unrelated to nesting — extensions, `app.local.yml` — so splitting
+them would be surprising; sheets have no such convention).
 
 Single-file and string path sources ignore `filename_as_key`/
 `dirname_as_key` (they merge into the root as always); `sheetname_as_key`
@@ -297,6 +311,66 @@ so they hold under `--all-features` (which turns `tree` on). The CLI
 also individually exposed as `--filename-as-key`, `--dirname-as-key`,
 `--sheetname-as-key` and `--dir-depth <n>` (an integer; `--no-` forms on
 the booleans).
+
+### Commented names and keys (owner, 2026-07-27)
+
+A name or key that starts with one of the **comment prefixes — `#` or
+`_`** reads as "commented out". One shared set for every rule below
+(crate-private `COMMENT_PREFIXES` in `src/options.rs`, the single place
+the characters are written); `.` is deliberately **not** a prefix (it was
+one while the rule only covered sheets, and was dropped when the rule
+generalized on 2026-07-27 — `.env`, `.hidden.yml` and a `.y` sheet are
+ordinary names). Four independent `bool` options, **all default `true`**
+and **all always available on any build**, say where the rule applies:
+
+- **`ignore_commented_filenames`** — folder scanning: a file whose name
+  starts with a prefix is skipped (`config/_draft.yml`,
+  `config/#old.json`), keyed or not.
+- **`ignore_commented_dirnames`** — folder scanning: a subfolder whose
+  name starts with a prefix is not descended into, so nothing under
+  `config/_wip/` loads (and, with `dirname_as_key`, no key appears).
+- **`ignore_commented_sheetnames`** — spreadsheet formats only: a sheet
+  whose name starts with a prefix is skipped (this is the old
+  `ignore_commented_sheets`, renamed and minus `.`).
+- **`ignore_commented_data_keys`** — every **data key**: after a source
+  parses (and after `dot_key` expansion), object keys starting with a
+  prefix are dropped from that parse result, **recursively** — nested
+  objects and objects inside arrays included, so a `#memo` column of a db
+  grid vanishes from every record. It applies to every source kind
+  (files, sheets, `(format, text)` strings, `(value,)` typed overrides).
+
+Scope rules:
+
+- The three **name** options filter **scanning/selection**, by name,
+  whether or not that name becomes a key: a `#tmp` sheet is skipped in
+  merge mode too (where sheet names are not keys), and `_draft.yml` is
+  skipped with `filename_as_key` off.
+- **Naming a thing yourself always wins** (explicit beats the filter,
+  exactly as with `ignore_hidden_sheets`) — three cases, all tested:
+  1. a **file** path source (or `c4::load("config/_draft.yml")`) loads
+     that file with `ignore_commented_filenames: true`;
+  2. a **folder** path source (`c4::load("config/_wip")`) scans that
+     folder with `ignore_commented_dirnames: true` — but **only that
+     folder is exempt**: the scan below it filters as usual, so
+     `config/_wip/#deep/` is still skipped and its files still follow
+     `ignore_commented_filenames`;
+  3. a **table source naming a sheet** (`(format, path, sheet, layout)`)
+     reads that sheet with `ignore_commented_sheetnames: true` and keys
+     it by the sheet name.
+- **`ignore_commented_data_keys` never touches the structural keys** c4
+  builds from names (`filename_as_key`/`dirname_as_key`/`sheetname_as_key`,
+  and the sheet-name key of an explicit-sheet table source) — that
+  data/name split is exactly why the option says **data keys** (owner,
+  2026-07-27): those keys are governed by the three name options alone,
+  so turning one of them off really does make the prefixed name loadable
+  as a key. Implementation consequence: the filter runs at the **data**
+  boundary — on the parse result of one file/sheet/string/value, *before*
+  any name key wraps it — not on the merged tree.
+- A dropped key takes its whole subtree with it; an object left empty
+  stays an empty object (which merges as nothing).
+- `c4::parse_table` never filters by itself — it is a building block, and
+  the filter runs on what a **source** finally parsed to, a
+  `CustomFormat`/`CustomLayout` result included.
 
 ### Table stage
 
@@ -390,7 +464,13 @@ replace, merge rule 2):
 Implementation note: `expand_key` was replaced by
 `insert_key(root, key, value, dot_key)` (`src/format/mod.rs`), which
 walks the existing tree — `[]` append has to see the array built so far,
-so expand-then-merge cannot express it.
+so expand-then-merge cannot express it. Its sibling
+`strip_commented_data_keys(value, options)` (same module) is the
+`ignore_commented_data_keys` pass, called on every data-parse result —
+`format::parse` (all text formats, so file *and* string sources), the csv
+branch of `parse_table_file`, `sheet::parse_sheet` (per sheet, before any
+sheet-name key) and, in the loader, custom-format results and
+`Source::Value`.
 
 Cell typing is shared across layouts: the type ids below, the `bad`
 message shape, and `Error::Table` row numbers (1-based, and real
@@ -570,8 +650,10 @@ else about type ids, `dot_key` or merging is spreadsheet-specific.
   `Options` fields, both default `true`:
   - `ignore_hidden_sheets` — skip sheets marked hidden in the workbook
     (xlsx `hidden`/`veryHidden`; ods `table:display="false"`).
-  - `ignore_commented_sheets` — skip sheets whose name starts with `#`, `.`
-    or `_`.
+  - `ignore_commented_sheetnames` — skip sheets whose name starts with a
+    comment prefix (`#` or `_`; **not** `.`) — see "Commented names and
+    keys". Each remaining sheet's parsed content then goes through
+    `ignore_commented_data_keys` like any other data.
 - **`sheetname_as_key: false` (default) — each sheet is a file (owner,
   2026-07-22):** every remaining sheet parses and they all **deep-merge**
   into one value, in `order` applied to the sheet names (sheets have no
@@ -591,8 +673,10 @@ else about type ids, `dot_key` or merging is spreadsheet-specific.
   parse result, so it applies wherever the workbook appears (a
   single-file source with `sheetname_as_key: true` merges the sheet-keyed
   object into the root); sheet keys deep-merge like any keys and
-  `case_sensitive` applies. No sheets left after filtering → Null
-  (contributes nothing).
+  `case_sensitive` applies. Sheet names go in through `insert_key`, so
+  `dot_key` expands them (`a.b` → `{a: {b: …}}`, `items[]` appends) —
+  unlike file/folder keys, which stay literal (see "Folder keying"). No
+  sheets left after filtering → Null (contributes nothing).
 - **Explicit sheet (table sources):** a `(format, path, sheet, layout)`
   source reads exactly that sheet with that layout, skips the ignore
   filters, errors when the sheet is missing, and merges under the sheet
@@ -613,8 +697,9 @@ else about type ids, `dot_key` or merging is spreadsheet-specific.
   non-zero); duration-formatted cells → `hh:mm:ss[.mmm]` of the total.
   Formula cells contribute their cached result; error cells (`#DIV/0!`
   …) are `Error::Parse`.
-- CLI: `--ignore-commented-sheets` / `--ignore-hidden-sheets` (+ `--no-`
-  forms). Neither format is an output format (`-f excel` stays unknown).
+- CLI: `--ignore-commented-sheetnames` / `--ignore-hidden-sheets`
+  (+ `--no-` forms). Neither format is an output format (`-f excel` stays
+  unknown).
 - Binary fixtures are generated, not hand-edited: `tools/gen-sheets`
   (a standalone zero-dependency Rust crate — it hand-writes stored-entry
   zips with a fixed timestamp, so output is byte-deterministic; it
@@ -656,7 +741,9 @@ canonical flag reference (README only points at it — and at
 integer); one flag per boolean option (`--filename-as-key`,
 `--dirname-as-key`, `--sheetname-as-key`, `--dot-key`,
 `--case-sensitive`, `--auto-no-ext-files`, `--ignore-unknown-ext`,
-`--ignore-commented-sheets`, `--ignore-hidden-sheets`), each with a
+`--ignore-commented-data-keys`, `--ignore-commented-filenames`,
+`--ignore-commented-dirnames`, `--ignore-commented-sheetnames`,
+`--ignore-hidden-sheets`), each with a
 `--no-<name>` counterpart; and the `--tree` preset (sets the three
 `*_as_key` flags true + `dir_depth = -1`; `--no-tree` resets them). Value
 flags accept `--flag v` or `--flag=v`.
@@ -714,7 +801,18 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   tree_order_reverse, typed ipv4 assertion, strict unknown-ext error) —
   keying needs no feature, so this `mod tree` runs on any build — and the
   `tree`-feature default flip (`tree_feature_flips_defaults` /
-  `default_is_flat_without_tree`). Fixture cases build on the explicit
+  `default_is_flat_without_tree`), and the commented names/keys options
+  (`mod commented`: the `commented_names`/`commented_names_off` variant
+  pair — `_`/`#` files and folders skipped by default, loaded with the
+  three name options off, a `.hidden.json` file proving `.` is not a
+  prefix — the `commented_keys`/`commented_keys_off` pair for
+  `ignore_commented_data_keys` — nested objects, objects inside arrays and a
+  dot_key-expanded `#a.b` — plus non-fixture tests for the three
+  "explicit wins" cases (a named commented **file** loads, a named
+  commented **folder** scans but still filters its own `_wip/#deep/`
+  subfolder, a **table source naming a `_z` sheet** reads it), that the
+  keys made from names survive `ignore_commented_data_keys`, and that a
+  `(value,)` source's keys are filtered). Fixture cases build on the explicit
   flat `common::base()`, not `Options::default()`, so they hold under
   `--all-features` (which turns `tree` on).
 - `tests/formats.rs` — csv table schema (scalars + aliases, auto +
@@ -750,8 +848,10 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   workbook: two visible db sheets merge in name order, the later array
   winning), excel_hidden_config /
   excel_hidden_config_off (the `ignore_hidden_sheets` variant pair),
-  excel_tree / excel_tree_prefix_off (`sheetname_as_key` sheet keys, the
-  `ignore_commented_sheets` variant pair; keying needs no feature),
+  excel_tree / excel_tree_prefix_off (`sheetname_as_key` sheet keys —
+  including an `e.f` sheet proving `dot_key` expands sheet names — the
+  `ignore_commented_sheetnames` variant pair; keying needs no feature),
+  excel_dot_sheet (a single `.y` sheet: `.` is not a comment prefix),
   excel_datetime (serial date/time/dt cells typed by a db type row;
   gated on `datetime`),
   excel_bad (config only: bad typed cell on a padded grid asserts real
@@ -878,7 +978,9 @@ paths).
 - `src/error.rs` — `Error` / `Result`.
 - `src/options.rs` — the plain-data surface: `Options`, `Order`
   (id-convertible via `from_id`/`From<&str>`), `Format`, `FormatKind`,
-  `FormatSpec`, `CustomFormat`. No `TableOptions`/`TableColumns` — the
+  `FormatSpec`, `CustomFormat`, plus the crate-private `COMMENT_PREFIXES`
+  (`#`, `_`) and `is_commented(name)` shared by the four
+  `ignore_commented_*` options. No `TableOptions`/`TableColumns` — the
   table stage is optionless. `FormatSpec`/`CustomFormat` fields are
   crate-private (users construct via `From` / `CustomFormat::new` and
   never read them); `FormatKind` also converts from a format-id `&str`.
@@ -888,9 +990,9 @@ paths).
   macro and no `c4::value` — the `sources` list is a plain
   `vec![… .into()]`.
 - `src/trace.rs` — `SourceRef`, `TracedValue` and the `$id` serialization.
-- `src/loader.rs` — `Loader` plus all scanning/merging internals (scan →
-  parse → merge with provenance; `load()` = `trace()` minus labels, one
-  code path).
+- `src/loader.rs` — `Loader` plus all scanning/merging internals (scan,
+  including the commented file/dir name skips → parse → merge with
+  provenance; `load()` = `trace()` minus labels, one code path).
 - `src/value.rs` — `Value`, accessors, `format_id`, serde bridges.
 - `src/de.rs` — deserialize any serde type out of an owned `Value`
   (crate-private types).

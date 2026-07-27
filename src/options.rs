@@ -6,6 +6,21 @@ use std::path::Path;
 
 use crate::{Result, Source, Value};
 
+/// The characters that mark a name or key as "commented out" — the one
+/// set behind [`Options::ignore_commented_data_keys`],
+/// [`ignore_commented_filenames`](Options::ignore_commented_filenames),
+/// [`ignore_commented_dirnames`](Options::ignore_commented_dirnames) and
+/// [`ignore_commented_sheetnames`](Options::ignore_commented_sheetnames).
+/// `.` is deliberately not one of them, so dotfiles (`.env`) and dotted
+/// sheet names stay ordinary.
+pub(crate) const COMMENT_PREFIXES: [char; 2] = ['#', '_'];
+
+/// Whether a name or key reads as commented out (see
+/// [`COMMENT_PREFIXES`]).
+pub(crate) fn is_commented(name: &str) -> bool {
+    name.starts_with(COMMENT_PREFIXES)
+}
+
 /// A config file format.
 ///
 /// The variants always exist; whether a format can actually be parsed
@@ -781,11 +796,115 @@ pub struct Options {
     /// # }
     /// ```
     pub ignore_unknown_ext: bool,
+    /// **All modes; every source kind.** Drop **data keys** — the object
+    /// keys a source's own content parses to — that start with a comment
+    /// prefix (`#` or `_` — never `.`): `#note`, `_tmp` and their whole
+    /// subtrees disappear. Default `true`.
+    ///
+    /// The filter runs on each parse result — one file, one sheet, one
+    /// `(format, text)` string, one `(value,)` override — **after**
+    /// [`dot_key`](Options::dot_key) expansion, and reaches every level:
+    /// nested objects and objects inside arrays (so a `#memo` column
+    /// vanishes from every record of a db grid). It is deliberately
+    /// *data* keys only: the keys c4 builds from **names** —
+    /// [`filename_as_key`](Options::filename_as_key),
+    /// [`dirname_as_key`](Options::dirname_as_key),
+    /// [`sheetname_as_key`](Options::sheetname_as_key) and the sheet key
+    /// of an explicit-sheet table source — are governed by the three
+    /// `ignore_commented_*name*` options below instead. An object left
+    /// empty stays an empty object.
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    ///
+    /// # fn main() -> Result<(), c4::Error> {
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         sources: vec![(BTreeMap::from([
+    ///             ("port", 8080),
+    ///             ("_scratch", 1), // commented out
+    ///         ]),).into()],
+    ///         ..c4::Options::default() // ignore_commented_data_keys: true
+    ///     })
+    ///     .load()?;
+    /// assert_eq!(value["port"].as_i64(), Some(8080));
+    /// assert!(value["_scratch"].is_null());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub ignore_commented_data_keys: bool,
+    /// **All modes**; folder sources. Skip files whose name starts with a
+    /// comment prefix (`#` or `_` — never `.`, so `.env` still loads):
+    /// `config/_draft.yml` is draft space next to live config. Default
+    /// `true`. The name decides, so this applies whether or not
+    /// [`filename_as_key`](Options::filename_as_key) would key the file.
+    ///
+    /// **Naming the file yourself always wins.** This filters the folder
+    /// **scan** only: a path source (or [`c4::load`](crate::load))
+    /// pointing straight at `config/_draft.yml` loads it even with the
+    /// option on — you asked for that file by name.
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // scanning ./config skips its _draft.yml by default …
+    /// let value: c4::Value = c4::load("config")?;
+    ///
+    /// // … but naming the file loads it, option or not
+    /// let draft: c4::Value = c4::load("config/_draft.yml")?;
+    ///
+    /// // false merges it in while scanning too
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         ignore_commented_filenames: false,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub ignore_commented_filenames: bool,
+    /// **All modes**; folder sources. Skip subfolders whose name starts
+    /// with a comment prefix (`#` or `_` — never `.`): nothing under
+    /// `config/_wip/` is scanned, and with
+    /// [`dirname_as_key`](Options::dirname_as_key) no key appears for it.
+    /// Default `true`.
+    ///
+    /// **Naming the folder yourself always wins — for that folder only.**
+    /// A path source `config/_wip` scans `_wip` itself even with the
+    /// option on, but the scan *below* it filters as usual: a
+    /// `config/_wip/#deep/` subfolder is still skipped (and its files
+    /// still follow
+    /// [`ignore_commented_filenames`](Options::ignore_commented_filenames)).
+    /// Only the folder you named is exempt, not everything under it.
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // scanning ./config skips _wip/ entirely by default …
+    /// let value: c4::Value = c4::load("config")?;
+    ///
+    /// // … but naming it scans it — while `_wip/#deep/` inside stays out
+    /// let wip: c4::Value = c4::load("config/_wip")?;
+    ///
+    /// // false scans commented subfolders too
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         ignore_commented_dirnames: false,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub ignore_commented_dirnames: bool,
     /// **Spreadsheet formats (excel/ods) only.** Skip sheets whose name
-    /// starts with `#`, `.` or `_` — draft/scratch space next to live
-    /// config, read like a "commented-out" sheet. Default `true`. (A
-    /// table source that names a sheet explicitly bypasses this filter, so
-    /// a prefixed sheet stays loadable on purpose.)
+    /// starts with a comment prefix (`#` or `_` — never `.`) —
+    /// draft/scratch space next to live config, read like a
+    /// "commented-out" sheet. Default `true`. The name decides, so the
+    /// sheet is skipped in merge mode too (where sheet names are not
+    /// keys).
+    ///
+    /// **Naming the sheet yourself always wins.** This filters the
+    /// workbook's sheet **selection** only: a
+    /// `(format, path, sheet, layout)` table source reads exactly the
+    /// sheet it names — commented or hidden — and merges it under the
+    /// sheet name, so a `_extra` sheet stays loadable on purpose.
     ///
     /// ```no_run
     /// # fn main() -> Result<(), c4::Error> {
@@ -794,7 +913,15 @@ pub struct Options {
     /// let value: c4::Value = c4::Loader::new(c4::Options {
     ///         sources: vec!["./game.xlsx".into()],
     ///         sheetname_as_key: true,
-    ///         ignore_commented_sheets: false,
+    ///         ignore_commented_sheetnames: false,
+    ///         ..c4::Options::default()
+    ///     })
+    ///     .load()?;
+    /// assert!(!value["_draft"].is_null());
+    ///
+    /// // naming the sheet reads it with the filter left on
+    /// let value: c4::Value = c4::Loader::new(c4::Options {
+    ///         sources: vec![(c4::Format::Excel, "./game.xlsx", "_draft", "db").into()],
     ///         ..c4::Options::default()
     ///     })
     ///     .load()?;
@@ -802,7 +929,7 @@ pub struct Options {
     /// # Ok(())
     /// # }
     /// ```
-    pub ignore_commented_sheets: bool,
+    pub ignore_commented_sheetnames: bool,
     /// **Spreadsheet formats (excel/ods) only.** Skip sheets marked
     /// hidden in the workbook (Excel `hidden`/`veryHidden`, OpenDocument
     /// `table:display="false"`). Default `true`. (A table source that
@@ -841,7 +968,10 @@ impl Default for Options {
             order: Order::default(),
             auto_no_ext_files: true,
             ignore_unknown_ext: true,
-            ignore_commented_sheets: true,
+            ignore_commented_data_keys: true,
+            ignore_commented_filenames: true,
+            ignore_commented_dirnames: true,
+            ignore_commented_sheetnames: true,
             ignore_hidden_sheets: true,
         }
     }

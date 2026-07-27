@@ -1,0 +1,6 @@
+{
+  "$id": "Leaf",
+  "value": [{ "p": 2 }],
+  "source": "tests/fixtures/excel_dot_sheet/config/app.xlsx",
+  "format": "arr"
+}

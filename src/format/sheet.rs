@@ -7,11 +7,12 @@
 //!
 //! Sheet selection: non-worksheet sheets (chart/dialog/macro/VBA) are
 //! always skipped; `Options.ignore_hidden_sheets` and
-//! `Options.ignore_commented_sheets` filter the rest. Each remaining
+//! `Options.ignore_commented_sheetnames` filter the rest. Each remaining
 //! sheet is treated like a file: with `sheetname_as_key: false` they all
 //! deep-merge into one value (in `order` by sheet name); with
 //! `sheetname_as_key: true` the workbook becomes an object keyed by sheet
-//! name. No sheets left → the workbook contributes nothing.
+//! name (through `insert_key`, so `dot_key` expands a dotted name). No
+//! sheets left → the workbook contributes nothing.
 
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -83,7 +84,7 @@ fn parse_workbook(
             });
         }
         let value = parse_sheet(&mut workbook, name, layout, path, options)?;
-        return Ok(Value::Object(BTreeMap::from([(name.to_owned(), value)])));
+        return Ok(sheet_key(name, value, options));
     }
 
     // every non-ignored sheet parses; a workbook with none contributes
@@ -94,16 +95,16 @@ fn parse_workbook(
         .map(|sheet| sheet.name)
         .collect();
     if options.sheetname_as_key {
-        // each sheet is a key (names are unique, so order is immaterial)
-        let mut root = BTreeMap::new();
-        for name in names {
-            let value = parse_sheet(&mut workbook, &name, layout, path, options)?;
-            root.insert(name, value);
-        }
-        if root.is_empty() {
+        if names.is_empty() {
             return Ok(Value::Null);
         }
-        Ok(Value::Object(root))
+        // each sheet is a key (names are unique, so order is immaterial)
+        let mut root = Value::Object(BTreeMap::new());
+        for name in names {
+            let value = parse_sheet(&mut workbook, &name, layout, path, options)?;
+            super::insert_key(&mut root, &name, value, options.dot_key);
+        }
+        Ok(root)
     } else {
         // each sheet is treated like a file: they all deep-merge into one
         // value, in `order` applied to the sheet names, later overriding
@@ -121,6 +122,15 @@ fn parse_workbook(
         }
         Ok(if any { merged } else { Value::Null })
     }
+}
+
+/// One sheet's value under its sheet name, inserted the way every data
+/// key is — so `dot_key` expands a dotted sheet name (`a.b` →
+/// `{a: {b: …}}`) and the array suffixes work.
+fn sheet_key(name: &str, value: Value, options: &Options) -> Value {
+    let mut root = Value::Object(BTreeMap::new());
+    super::insert_key(&mut root, name, value, options.dot_key);
+    root
 }
 
 /// Deep-merge `incoming` into `target`, mirroring the loader's merge
@@ -175,7 +185,7 @@ fn keep(sheet: &Sheet, options: &Options) -> bool {
     if options.ignore_hidden_sheets && sheet.visible != SheetVisible::Visible {
         return false;
     }
-    if options.ignore_commented_sheets && sheet.name.starts_with(['#', '.', '_']) {
+    if options.ignore_commented_sheetnames && crate::options::is_commented(&sheet.name) {
         return false;
     }
     true
@@ -207,7 +217,11 @@ fn parse_sheet(
             rows.push(row);
         }
     }
-    super::table::parse(rows, layout, path, options)
+    let mut value = super::table::parse(rows, layout, path, options)?;
+    // a sheet is a data boundary, like a file: its keys are filtered
+    // before any sheet-name key wraps the value
+    super::strip_commented_data_keys(&mut value, options);
+    Ok(value)
 }
 
 /// One cell as the text the table stage will type: strings as-is,

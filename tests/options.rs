@@ -1,7 +1,8 @@
 //! Options behavior: scan depth (`dir_depth`), folder/file keying
 //! (`dirname_as_key`/`filename_as_key`), load order, dot_key, case
-//! sensitivity, and the tree-shaped loading (folders/files as keys,
-//! including order-driven key collisions and extension handling). The
+//! sensitivity, the tree-shaped loading (folders/files as keys,
+//! including order-driven key collisions and extension handling) and the
+//! commented names/keys options. The
 //! `tree` feature only flips `Options::default()`; the keying itself
 //! works on any build, so these use an explicit flat `base()`.
 
@@ -241,5 +242,181 @@ mod tree {
         options.sources = vec!["tests/fixtures/tree_unknown/config".into()];
         let res = c4::Loader::new(options).load::<c4::Value>();
         assert!(matches!(res, Err(c4::Error::Parse { .. })));
+    }
+}
+
+// Commented names and keys: one prefix set (`#`, `_` — never `.`) and
+// four options, all default true. The three name options filter
+// scanning; ignore_commented_data_keys filters the keys a source parses to.
+mod commented {
+    #[allow(unused_imports)] // unused in single-format builds
+    use crate::common::{base, check, fx, loader};
+
+    #[cfg(any(feature = "json", feature = "jsonc"))]
+    #[test]
+    fn commented_files_and_folders_are_skipped() {
+        // `_draft.json`/`#old.json` and everything under `_wip/`,
+        // `#tmp/` are skipped; `.hidden.json` loads — `.` is not a
+        // comment prefix
+        check("commented_names", base());
+    }
+
+    #[cfg(any(feature = "json", feature = "jsonc"))]
+    #[test]
+    fn commented_files_and_folders_load_when_options_off() {
+        let options = c4::Options {
+            ignore_commented_filenames: false,
+            ignore_commented_dirnames: false,
+            ignore_commented_sheetnames: false,
+            ..base()
+        };
+        check("commented_names_off", options);
+    }
+
+    #[cfg(any(feature = "json", feature = "jsonc"))]
+    #[test]
+    fn commented_names_produce_no_keys() {
+        // the filter is on the name, so a skipped file/folder simply
+        // has no key to contribute under
+        let options = c4::Options {
+            filename_as_key: true,
+            dirname_as_key: true,
+            dir_depth: -1,
+            sources: vec![fx("commented_names/config").into()],
+            ..base()
+        };
+        let value: serde_json::Value = c4::Loader::new(options).load().unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                ".hidden": { "hidden": true },
+                "app": { "port": 8080 },
+                "sub": { "b": { "sub": 1 } },
+            })
+        );
+    }
+
+    #[cfg(any(feature = "json", feature = "jsonc"))]
+    #[test]
+    fn name_keys_survive_the_key_filter() {
+        // the three name options govern the keys made from names:
+        // with them off the prefixed file/folder keys appear even though
+        // ignore_commented_data_keys is on (it only filters parsed content)
+        let options = c4::Options {
+            filename_as_key: true,
+            dirname_as_key: true,
+            dir_depth: -1,
+            ignore_commented_filenames: false,
+            ignore_commented_dirnames: false,
+            sources: vec![fx("commented_names_off/config").into()],
+            ..base() // ignore_commented_data_keys stays true
+        };
+        let value: serde_json::Value = c4::Loader::new(options).load().unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "#old": { "port": 2, "old": true },
+                "#tmp": { "d": { "tmp": true } },
+                ".hidden": { "hidden": true },
+                "_draft": { "port": 1, "draft": true },
+                "_wip": { "#deep": { "e": { "deep": true } }, "c": { "wip": true } },
+                "app": { "port": 8080 },
+                "sub": { "b": { "sub": 1 } },
+            })
+        );
+    }
+
+    #[cfg(any(feature = "json", feature = "jsonc"))]
+    #[test]
+    fn explicitly_named_sources_are_never_filtered() {
+        // the name options filter scanning, not the sources you name: a
+        // commented folder and a commented file both load when named
+        let value: serde_json::Value = loader(vec![
+            fx("commented_names/config/_wip").into(),
+            fx("commented_names/config/_draft.json").into(),
+        ])
+        .load()
+        .unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({ "wip": true, "port": 1, "draft": true })
+        );
+    }
+
+    #[cfg(any(feature = "json", feature = "jsonc"))]
+    #[test]
+    fn an_explicitly_named_folder_still_filters_inside() {
+        // only the named folder itself is exempt — scanning below it
+        // filters as usual, so `_wip/#deep/` stays out
+        let options = c4::Options {
+            dir_depth: -1,
+            sources: vec![fx("commented_names/config/_wip").into()],
+            ..base()
+        };
+        let value: serde_json::Value = c4::Loader::new(options).load().unwrap();
+        assert_eq!(value, serde_json::json!({ "wip": true }));
+    }
+
+    #[cfg(feature = "excel")]
+    #[test]
+    fn an_explicitly_named_sheet_is_never_filtered() {
+        // a (format, path, sheet, layout) table source reads exactly
+        // that sheet, commented name or not, keyed by the sheet name
+        let value: serde_json::Value = loader(vec![
+            (
+                c4::Format::Excel,
+                fx("excel_tree/config/a/b.xlsx"),
+                "_z",
+                "db",
+            )
+                .into(),
+        ])
+        .load()
+        .unwrap();
+        assert_eq!(value, serde_json::json!({ "_z": [{ "p": 3 }] }));
+    }
+
+    #[cfg(any(feature = "json", feature = "jsonc"))]
+    #[test]
+    fn commented_keys_are_dropped() {
+        // nested objects and objects inside arrays too; an object left
+        // empty stays an empty object
+        check("commented_keys", base());
+    }
+
+    #[cfg(any(feature = "json", feature = "jsonc"))]
+    #[test]
+    fn commented_keys_load_when_option_off() {
+        let options = c4::Options {
+            ignore_commented_data_keys: false,
+            ..base()
+        };
+        check("commented_keys_off", options);
+    }
+
+    #[test]
+    fn key_filter_runs_after_dot_key_expansion() {
+        // dot_key expands first, then prefixed segments are dropped
+        // wherever they landed (custom format + parse_table, so this
+        // runs under every feature combination)
+        let kv = c4::CustomFormat::new("kv", ["kv"], |text, path, options| {
+            let rows = text
+                .lines()
+                .map(|line| line.split('=').map(str::to_owned).collect())
+                .collect();
+            c4::parse_table(rows, &c4::TableLayout::Kv, path, options)
+        });
+        let text = "#a.b=1\nc.#d=2\nc.e=3\n_f=4";
+        let value: serde_json::Value = loader(vec![(kv, text).into()]).load().unwrap();
+        assert_eq!(value, serde_json::json!({ "c": { "e": 3 } }));
+    }
+
+    #[test]
+    fn value_source_keys_are_filtered_too() {
+        // every source kind goes through the filter, typed overrides
+        // included
+        let map = std::collections::BTreeMap::from([("port", 1), ("_tmp", 2)]);
+        let value: serde_json::Value = loader(vec![(map,).into()]).load().unwrap();
+        assert_eq!(value, serde_json::json!({ "port": 1 }));
     }
 }

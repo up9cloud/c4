@@ -1,0 +1,11 @@
+{
+  "port": 8080,
+  "db": {
+    "host": "localhost"
+  },
+  "items": [
+    { "id": 1 },
+    { "id": 2 }
+  ],
+  "leftover": {}
+}

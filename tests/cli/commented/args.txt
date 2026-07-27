@@ -1,0 +1,1 @@
+--no-ignore-commented-filenames --no-ignore-commented-dirnames -f json tests/fixtures/commented_names_off/config

@@ -1,0 +1,54 @@
+{
+  "port": {
+    "$id": "Leaf",
+    "value": 8080,
+    "source": "tests/fixtures/commented_keys_off/config/app.json",
+    "format": "i64"
+  },
+  "#note": {
+    "$id": "Leaf",
+    "value": "a commented-out key: the whole subtree goes",
+    "source": "tests/fixtures/commented_keys_off/config/app.json",
+    "format": "str"
+  },
+  "_tmp": {
+    "x": {
+      "$id": "Leaf",
+      "value": 1,
+      "source": "tests/fixtures/commented_keys_off/config/app.json",
+      "format": "i64"
+    }
+  },
+  "db": {
+    "host": {
+      "$id": "Leaf",
+      "value": "localhost",
+      "source": "tests/fixtures/commented_keys_off/config/app.json",
+      "format": "str"
+    },
+    "_secret": {
+      "$id": "Leaf",
+      "value": "s",
+      "source": "tests/fixtures/commented_keys_off/config/app.json",
+      "format": "str"
+    }
+  },
+  "items": {
+    "$id": "Leaf",
+    "value": [
+      { "id": 1, "#memo": "records are filtered too" },
+      { "id": 2 }
+    ],
+    "source": "tests/fixtures/commented_keys_off/config/app.json",
+    "format": "arr"
+  },
+  "#empty": {},
+  "leftover": {
+    "#only": {
+      "$id": "Leaf",
+      "value": 1,
+      "source": "tests/fixtures/commented_keys_off/config/app.json",
+      "format": "i64"
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "draft": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/commented_names_off/config/_draft.json",
+    "format": "bool"
+  },
+  "hidden": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/commented_names_off/config/.hidden.json",
+    "format": "bool"
+  },
+  "old": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/commented_names_off/config/#old.json",
+    "format": "bool"
+  },
+  "port": {
+    "$id": "Leaf",
+    "value": 8080,
+    "source": "tests/fixtures/commented_names_off/config/app.json",
+    "format": "i64"
+  },
+  "sub": {
+    "$id": "Leaf",
+    "value": 1,
+    "source": "tests/fixtures/commented_names_off/config/sub/b.json",
+    "format": "i64"
+  },
+  "tmp": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/commented_names_off/config/#tmp/d.json",
+    "format": "bool"
+  },
+  "wip": {
+    "$id": "Leaf",
+    "value": true,
+    "source": "tests/fixtures/commented_names_off/config/_wip/c.json",
+    "format": "bool"
+  }
+}

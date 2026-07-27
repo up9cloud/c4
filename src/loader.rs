@@ -115,10 +115,11 @@ impl Loader {
                     }
                 }
                 Source::Value(result) => {
-                    let value = result.clone().map_err(|message| Error::Parse {
+                    let mut value = result.clone().map_err(|message| Error::Parse {
                         path: PathBuf::from(format!("value:{index}")),
                         message,
                     })?;
+                    format::strip_commented_data_keys(&mut value, &self.options);
                     if !matches!(value, Value::Null) {
                         self.merge(&mut root, value, &SourceRef::Value(index));
                     }
@@ -126,6 +127,8 @@ impl Loader {
                 Source::String { format, content } => {
                     let label = PathBuf::from(format!("string:{index}"));
                     let value = match format {
+                        // `format::parse` filters commented data keys
+                        // itself; a custom parser's result is filtered here
                         FormatKind::Builtin(format) => format::parse(
                             *format,
                             content,
@@ -134,7 +137,9 @@ impl Loader {
                             &self.options,
                         )?,
                         FormatKind::Custom(custom) => {
-                            (custom.parser)(content, &label, &self.options)?
+                            let mut value = (custom.parser)(content, &label, &self.options)?;
+                            format::strip_commented_data_keys(&mut value, &self.options);
+                            value
                         }
                     };
                     if !matches!(value, Value::Null) {
@@ -165,7 +170,11 @@ impl Loader {
                     unreachable!("custom claims always index custom entries");
                 };
                 let text = std::fs::read_to_string(path).map_err(Error::Io)?;
-                (custom.parser)(&text, path, &self.options)
+                // built-in formats filter commented data keys inside
+                // `format::parse`/`parse_binary`; do it for custom ones here
+                let mut value = (custom.parser)(&text, path, &self.options)?;
+                format::strip_commented_data_keys(&mut value, &self.options);
+                Ok(value)
             }
         }
     }
@@ -332,7 +341,9 @@ fn sort_entries(entries: &mut [(String, PathBuf, bool)], order: Order) {
 /// All files of a folder in load order, each with the subfolder names
 /// leading to it. `depth` is the remaining [`Options::dir_depth`] budget:
 /// `0` stops descent, `-1` recurses without limit, a positive value
-/// decrements per level.
+/// decrements per level. Commented-out names (`#…`, `_…`) are skipped
+/// here — by name, so keyed or not, a `_draft.yml` file and everything
+/// under a `_wip/` folder stay out of the scan.
 fn walk(
     dir: &Path,
     prefix: Vec<String>,
@@ -343,6 +354,14 @@ fn walk(
     let mut entries = read_entries(dir)?;
     sort_entries(&mut entries, options.order);
     for (name, path, is_dir) in entries {
+        let ignore_commented = if is_dir {
+            options.ignore_commented_dirnames
+        } else {
+            options.ignore_commented_filenames
+        };
+        if ignore_commented && crate::options::is_commented(&name) {
+            continue;
+        }
         if is_dir {
             if depth != 0 {
                 let mut prefix = prefix.clone();
