@@ -16,8 +16,11 @@ dependencies.
 **Division of documents (no duplication):** README.md is the landing
 page only — badges, the "why c4" positioning statement (see the design
 principle below), purpose + install, the simplest `load` usage, the
-CLI, the examples index, and contributing — and it points at the crate
-docs for everything else. The **crate-level rustdoc** (`src/lib.rs`
+CLI, a pointer to the examples, and contributing — and it points at the
+crate docs for everything else. The **examples index** (the per-example
+table, how to run one, and the fixtures note) lives in
+`examples/README.md`, not in the root README (owner, 2026-08-12).
+The **crate-level rustdoc** (`src/lib.rs`
 `//!`) is the full user reference: sources & options, Cargo features,
 file formats (so named to keep them apart from the table formats),
 merge rules, tree mode, table formats, custom formats, provenance.

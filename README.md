@@ -17,8 +17,9 @@ cargo add c4-config    # the package is c4-config; in code it is `c4`
 ## Why c4
 
 In the AI era, you often don't need a config library. If your application
-loads a single settings file, let your AI generate the loading code —
-**zero dependencies** is still the lightest solution.
+loads a single settings file, ask your AI for bespoke loading code — it is
+the simplest and fastest way, with **zero dependencies**. No library can
+beat that.
 
 **c4 is for projects where conventions matter.**
 
@@ -114,31 +115,16 @@ exit.
 
 ## Examples
 
-Complete runnable examples live under [`examples/`](examples/): each
-subfolder is a **standalone crate** — its own `Cargo.toml`, config
-files, source, and an `output.log` showing exactly what it prints:
+Complete runnable examples live under [`examples/`](examples/) — each
+subfolder is a standalone crate with config files, source and a committed
+`output.log`:
 
 ```sh
 cd examples/00_simple && cargo run
 ```
 
-| Folder | Shows |
-| ------ | ----- |
-| [`00_simple`](examples/00_simple) | the basic `load` from a config folder |
-| [`01_advanced`](examples/01_advanced) | multi-source usage (folders + files + in-code values) |
-| [`csv-db`](examples/csv-db) | a CSV record grid (the `db` layout) into a `Vec<Item>` |
-| [`csv-header`](examples/csv-header) | reshaping a CSV with a `CustomFormat` (header + renamed/reordered columns) |
-| [`csv-list`](examples/csv-list) | single cells expanded into lists via the `array` / `csv` type ids |
-| [`csv-transpose`](examples/csv-transpose) | a column-oriented CSV transposed into rows with a `CustomFormat` |
-| [`dot-key`](examples/dot-key) | everything `dot_key` does — dotted nesting plus `name[]` / `name[<int>]` array keys |
-| [`hot-reload`](examples/hot-reload) | DIY hot-reload — watch the folder with `notify`, re-run `load()` |
-| [`xlsx-sheets`](examples/xlsx-sheets) | one Excel workbook, a different table layout per sheet |
-
-Beyond that,
-every behavior has a fixture under [`tests/fixtures/`](tests/fixtures/):
-`config/` is the input, `expect.json` the merged result, and
-`expect.debug.json` the traced form — if something is not covered in
-`examples/`, there is a fixture showing it.
+The index of what each one shows is in
+**[`examples/README.md`](examples/README.md)**.
 
 ## Contributing
 
