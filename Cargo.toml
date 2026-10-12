@@ -3,7 +3,7 @@ name = "c4-config"
 version = "0.5.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Load a folder of config files (jsonc/yaml/json/toml/ini/env/csv/xlsx/ods) into one deep-merged value"
+description = "Load a folder of config files (jsonc/yaml/json/toml/ini/cnf/env/csv/xlsx/ods) into one deep-merged value"
 license = "MIT"
 repository = "https://github.com/up9cloud/c4"
 autoexamples = false
@@ -32,6 +32,7 @@ jsonc = ["dep:jsonc-parser"]
 yaml = ["dep:serde_yaml"]
 toml = ["dep:toml"]
 ini = []
+cnf = []
 env = []
 csv = ["dep:csv"]
 excel = ["dep:calamine"]
@@ -49,7 +50,7 @@ macaddr = ["macaddr8"]
 numeric = []
 tree = []
 cli = [
-    "json", "jsonc", "yaml", "toml", "ini", "env", "csv",
+    "json", "jsonc", "yaml", "toml", "ini", "cnf", "env", "csv",
     "excel", "ods",
     "datetime", "inet", "macaddr", "uuid", "numeric",
 ]

@@ -32,6 +32,6 @@ fn main() -> Result<(), c4::Error> {
     println!("value = {value:#?}");
 
     // where did every leaf come from, and what format is it?
-    println!("trace = {:#?}", loader.trace()?);
+    println!("trace = {:#?}", loader.trace()?.value);
     Ok(())
 }

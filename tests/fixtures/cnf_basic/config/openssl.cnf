@@ -1,0 +1,29 @@
+# OpenSSL configuration: a default section, spaced headers, variables
+HOME			= .
+openssl_conf = openssl_init
+.include /etc/ssl/extra.cnf
+.pragma dollarid:true
+
+[ CA_default ]
+dir		= ./demoCA		# Where everything is kept
+certs		= $dir/certs		# Where the issued certs are kept
+private_key	= $dir/private/cakey.pem# The private key
+default_md	= default		# use public key default MD
+
+[ req ]
+default_bits		= 2048
+distinguished_name	= req_distinguished_name
+subject = "/CN=openssl-cmp-test"
+recipient = "/C=FI/O=Insta Demo/CN=Insta Demo CA" # or set srvcert
+
+[ req_distinguished_name ]
+countryName			= Country Name (2 letter code)
+0.organizationName		= Organization Name (eg, company)
+1.organizationName		= Second Organization Name (eg, company)
+commonName_max			= 64
+
+[ v3_ca ]
+basicConstraints = critical,CA:true
+subjectAltName = DNS:example.com,DNS:www.example.com
+oid_file = ${ENV::HOME}/.oid
+literal = \$dir and a\;b

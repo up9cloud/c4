@@ -1,6 +1,6 @@
 //! Load config from folders, files and in-code strings/values into one
-//! deep-merged [`Value`]. File formats (jsonc, yaml, json, toml, ini, env,
-//! csv, excel, ods) are individually Cargo-feature-gated, the table
+//! deep-merged [`Value`]. File formats (jsonc, yaml, json, toml, ini, cnf,
+//! env, csv, excel, ods) are individually Cargo-feature-gated, the table
 //! formats' cells (csv and spreadsheet sheets) carry typed values, and
 //! every value can be traced to the source it came from.
 //!
@@ -141,7 +141,7 @@
 //! | `jsonc` *(default)* | JSONC files (comments + trailing commas); also the `jsonc` table cell |
 //! | `yaml` | YAML files |
 //! | `json` | strict JSON files; also the table `json` cell |
-//! | `toml` / `ini` / `env` / `csv` | those file formats |
+//! | `toml` / `ini` / `cnf` / `env` / `csv` | those file formats |
 //! | `excel` | Excel workbooks (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`) |
 //! | `ods` | OpenDocument spreadsheets (`.ods`) |
 //! | `tree` | default-preset: flips [`filename_as_key`](Options::filename_as_key), [`dirname_as_key`](Options::dirname_as_key), [`sheetname_as_key`](Options::sheetname_as_key) on and [`dir_depth`](Options::dir_depth) to `-1` in [`Options::default`] (the fields work without it) |
@@ -173,6 +173,7 @@
 //! | `json`  | `.json` (strict)   | `json`  |
 //! | `toml`  | `.toml`            | `toml`  |
 //! | `ini`   | `.ini`             | `ini`   |
+//! | `cnf`   | `.cnf`             | `cnf`   |
 //! | `env`   | `.env`, `*.env`    | `env`   |
 //! | `csv`   | `.csv`             | `csv`   |
 //! | `excel` | `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | `excel` |
@@ -447,10 +448,44 @@
 //!
 //! # Provenance
 //!
-//! [`Loader::trace`] returns a [`TracedValue`] tree that keeps, per leaf,
-//! the source it came from and the format it parsed as — the shape the CLI
-//! `--trace` prints and the fixtures assert. See [`Loader::trace`] and
-//! [`TracedValue`].
+//! [`Loader::trace`] returns a [`Trace`]: the merged [`TracedValue`] tree
+//! that keeps, per leaf, the source it came from and the format it parsed
+//! as, plus the [`Warning`]s for input c4 accepted but did not act on —
+//! the shape the CLI `--trace` prints and the fixtures assert. The library
+//! never prints warnings, and [`load`] drops them.
+//!
+//! # cnf files
+//!
+//! `.ini` follows its spec strictly; `.cnf` has no spec and several
+//! dialects, so the `cnf` parser is lenient enough to read `my.cnf`
+//! (MySQL/MariaDB), `openssl.cnf` and the like as they are; where the
+//! dialects disagree it follows MySQL. `[ section ]` headers; `#`
+//! comments anywhere outside quotes, `;` and `%` comments at line start
+//! only; quotes stripped only when they wrap the whole value; MySQL
+//! escapes (`\s`, `\n`, …, any other `\X` kept as written); bare keys
+//! (`skip-networking`) as `true`; no line continuation. Everything else
+//! is a string, and keys stay literal. Variables (`$dir`, `$ENV::HOME`)
+//! are not expanded, and include directives (`!include`, `.include`) are
+//! skipped,
+//! each with a [`Warning`] in the trace:
+//!
+//! ```
+//! # #[cfg(feature = "cnf")]
+//! # fn main() -> Result<(), c4::Error> {
+//! let trace = c4::Loader::new(c4::Options {
+//!     sources: vec![("cnf", "!includedir /etc/mysql/conf.d/\n[mysqld]\nport = 3306\nskip-networking\n").into()],
+//!     ..c4::Options::default()
+//! })
+//! .trace()?;
+//! let value: c4::Value = trace.value.into();
+//! assert_eq!(value["mysqld"]["port"].as_str(), Some("3306"));
+//! assert_eq!(value["mysqld"]["skip-networking"].as_bool(), Some(true));
+//! assert_eq!(trace.warnings.len(), 1);
+//! # Ok(())
+//! # }
+//! # #[cfg(not(feature = "cnf"))]
+//! # fn main() {}
+//! ```
 
 #[cfg(not(any(
     feature = "json",
@@ -458,13 +493,14 @@
     feature = "yaml",
     feature = "toml",
     feature = "ini",
+    feature = "cnf",
     feature = "env",
     feature = "csv",
     feature = "excel",
     feature = "ods"
 )))]
 compile_error!(
-    "c4: enable at least one format feature (json, jsonc, yaml, toml, ini, env, csv, excel, ods)"
+    "c4: enable at least one format feature (json, jsonc, yaml, toml, ini, cnf, env, csv, excel, ods)"
 );
 
 mod de;
@@ -484,7 +520,7 @@ pub use options::{
     CustomFormat, CustomLayout, Format, FormatKind, FormatSpec, Options, Order, TableLayout,
 };
 pub use source::Source;
-pub use trace::{SourceRef, TracedValue};
+pub use trace::{SourceRef, Trace, TracedValue, Warning};
 pub use value::Value;
 
 use std::path::{Path, PathBuf};

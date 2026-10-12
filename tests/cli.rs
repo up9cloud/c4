@@ -195,3 +195,29 @@ fn unknown_output_format_errors() {
     let out = c4(&["-f", "nope", &fx("simple/config")]);
     assert!(!out.status.success());
 }
+
+#[test]
+fn warnings_go_to_stderr_in_every_mode() {
+    for args in [
+        vec!["-f", "json", "tests/fixtures/cnf_basic/config/openssl.cnf"],
+        vec![
+            "--trace",
+            "-f",
+            "json",
+            "tests/fixtures/cnf_basic/config/openssl.cnf",
+        ],
+    ] {
+        let out = c4(&args);
+        assert!(out.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stderr),
+            "c4: warning: tests/fixtures/cnf_basic/config/openssl.cnf: line 4: ignored directive \
+             '.include /etc/ssl/extra.cnf' (c4 does not process directives; add included files \
+             as sources)\n\
+             c4: warning: tests/fixtures/cnf_basic/config/openssl.cnf: line 5: ignored directive \
+             '.pragma dollarid:true' (c4 does not process directives; add included files as \
+             sources)\n",
+            "{args:?}"
+        );
+    }
+}

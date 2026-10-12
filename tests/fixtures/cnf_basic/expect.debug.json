@@ -1,0 +1,220 @@
+{
+  "CA_default": {
+    "certs": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "$dir/certs"
+    },
+    "default_md": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "default"
+    },
+    "dir": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "./demoCA"
+    },
+    "private_key": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "$dir/private/cakey.pem"
+    }
+  },
+  "HOME": {
+    "$id": "Leaf",
+    "format": "str",
+    "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+    "value": "."
+  },
+  "client": {
+    "password": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "pa ss#word"
+    },
+    "port": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "3306"
+    },
+    "socket": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "/var/run/mysqld/mysqld.sock"
+    }
+  },
+  "mysqld": {
+    "basedir": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "C:\\Program Files\\MySQL"
+    },
+    "bind-address": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "127.0.0.1"
+    },
+    "ft_stopword_file": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "a b\tc"
+    },
+    "init-connect": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "SET NAMES utf8mb4"
+    },
+    "log-error": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": ""
+    },
+    "plugin-load-add": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "auth_socket.so"
+    },
+    "port": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "3307"
+    },
+    "skip-external-locking": {
+      "$id": "Leaf",
+      "format": "bool",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": true
+    },
+    "skip-networking": {
+      "$id": "Leaf",
+      "format": "bool",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": true
+    },
+    "sql_mode": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION"
+    },
+    "user": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "mysql"
+    }
+  },
+  "mysqldump": {
+    "max_allowed_packet": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": "16M"
+    },
+    "quick": {
+      "$id": "Leaf",
+      "format": "bool",
+      "source": "tests/fixtures/cnf_basic/config/my.cnf",
+      "value": true
+    }
+  },
+  "openssl_conf": {
+    "$id": "Leaf",
+    "format": "str",
+    "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+    "value": "openssl_init"
+  },
+  "req": {
+    "default_bits": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "2048"
+    },
+    "distinguished_name": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "req_distinguished_name"
+    },
+    "recipient": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "/C=FI/O=Insta Demo/CN=Insta Demo CA"
+    },
+    "subject": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "/CN=openssl-cmp-test"
+    }
+  },
+  "req_distinguished_name": {
+    "0.organizationName": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "Organization Name (eg, company)"
+    },
+    "1.organizationName": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "Second Organization Name (eg, company)"
+    },
+    "commonName_max": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "64"
+    },
+    "countryName": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "Country Name (2 letter code)"
+    }
+  },
+  "v3_ca": {
+    "basicConstraints": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "critical,CA:true"
+    },
+    "literal": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "\\$dir and a\\;b"
+    },
+    "oid_file": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "${ENV::HOME}/.oid"
+    },
+    "subjectAltName": {
+      "$id": "Leaf",
+      "format": "str",
+      "source": "tests/fixtures/cnf_basic/config/openssl.cnf",
+      "value": "DNS:example.com,DNS:www.example.com"
+    }
+  }
+}

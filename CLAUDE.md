@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `c4` is a Rust library + CLI that loads config sources (folders, single
 files, in-code strings) and deep-merges them into one value. Formats
-(jsonc, yaml, json, toml, ini, env, csv, excel, ods) are individually
+(jsonc, yaml, json, toml, ini, cnf, env, csv, excel, ods) are individually
 feature-gated; `default = ["jsonc"]` (kept deliberately light — one
 parser dependency). Edition 2024,
 `rust-version = 1.85` — keep the toolchain current (`rustup update
@@ -212,8 +212,11 @@ tests second, implementation third.
   (`notify` + re-run `load()`). Revisit only if a compelling API shape
   appears (decided 2026-07).
 - **Provenance is a typed API, and a debug/test aid only.**
-  `Loader::trace()` returns `TracedValue` (Object nodes /
-  `Leaf { value, source: SourceRef }`), which serializes to
+  `Loader::trace()` returns a `Trace { value: TracedValue, warnings:
+  Vec<Warning> }` (2026-10-12; it returned the bare `TracedValue`
+  before — a breaking change). `Trace` serializes to `{"value": …,
+  "warnings": […]}`, always both keys. `TracedValue` (Object nodes /
+  `Leaf { value, source: SourceRef }`) serializes to
   `{"$id": "Leaf", value, source, format}` JSON — used by CLI `--trace`
   and the fixtures. `$id` tags the node kind so leaves are unambiguous
   (a config object could itself have value/source/format keys). `format`
@@ -222,6 +225,20 @@ tests second, implementation third.
   recorded parser state. Source labels (`SourceRef::File`,
   `SourceRef::String(index)` → `"string:<i>"`) carry no config
   semantics.
+- **Warnings: in the trace, and on the CLI's stderr (owner, 2026-10-12).** A
+  `Warning { source: SourceRef, message: String }` records input c4
+  accepted but did not act on — so far only the cnf directives it skips
+  (`!include`, `.include`, …). The library never prints; `load()` drops
+  warnings; `trace().warnings` lists them in load order and serializes
+  each as `{"source": "<label>", "message": "line N: …"}` (`Display` is
+  `<label>: <message>`). The CLI shows them in `--trace`
+  output and, in every mode, as `c4: warning: <label>: <message>` lines
+  on stderr (owner, 2026-10-12: a CLI user must see why something was
+  not parsed without knowing about `--trace`; no `log` crate). Parsers
+  report through a `&mut Vec<String>` of messages; the
+  loader attaches the `SourceRef`. An `Options` warning callback (so
+  `load()` users could route warnings to their own logger) is deferred
+  until a second warning source exists.
 
 ## Spec details
 
@@ -712,6 +729,66 @@ else about type ids, `dot_key` or merging is spreadsheet-specific.
   and `git diff --exit-code`s to prove the checked-in binaries match the
   generator.
 
+### cnf (feature `cnf`, owner, 2026-10-12)
+
+`.ini` has a spec and its parser stays **strict**; `.cnf` has no RFC and
+several dialects, so its parser is **lenient** — a superset that must
+load real `my.cnf` (MySQL/MariaDB option files) and `openssl.cnf`
+unchanged. Goal (owner, 2026-10-12): any `.cnf` commonly found online
+parses without an error; where dialects conflict, **`my.cnf` behavior
+wins** (it is the bulk of real files), and no per-dialect exceptions. Separate module (`src/format/cnf.rs`), separate feature,
+`Format::Cnf`, id `cnf`, default extension `cnf`; implied by `cli`, not
+in `default`. Hand-rolled, no dependency.
+
+- A UTF-8 BOM at the start is dropped. Lines split on `\n`/`\r\n`.
+- **No line continuation** (owner, 2026-10-12): MySQL has none and lets a
+  value end in a literal `\` (`datadir=C:\data\`), so the openssl
+  trailing-`\` continuation is not supported; such a line keeps its `\`
+  and the next line parses on its own.
+- After trimming: blank lines and lines starting with `#`, `;` or `%`
+  (TeX `texmf.cnf`) are comments. Only `#` can also start a comment in
+  the middle of a line — `;` and `%` never do (values like `a;b`,
+  `SET a=1; SET b=2`, `$TEXMF/%s` stay intact).
+- **Section header:** `[name]` — the name is trimmed (`[ req ]` → `req`);
+  after `]` only whitespace or a `#`/`;` comment may follow. A missing
+  `]` or an empty name is `Error::Parse`. Keys before any header go to
+  the root (openssl's default section). Repeated headers merge into the
+  same object; a header over an earlier root scalar of that name
+  replaces it with an object.
+- **Directives:** a line starting with `!` (MySQL `!include`,
+  `!includedir`, any `!…`), or with `.include` / `.pragma` followed by
+  whitespace, `=` or end of line (openssl) — is **skipped with a
+  warning** (in the trace, and on stderr from the CLI) `line N: ignored directive '<line, comment stripped>' (c4
+  does not process directives; add included files as sources)`. Nothing is read.
+- **Key/value:** split at the first `=`; the key is trimmed and must be
+  non-empty (`Error::Parse`). Keys stay **literal** — no `dot_key`
+  expansion (`0.organizationName` is one key), no `-`/`_` folding. If an
+  unquoted `#` comes before any `=`, or there is no `=`, the line is a
+  **bare key** (MySQL flag, `skip-networking`) → `Value::Bool(true)`.
+  The one non-string value cnf produces.
+- **Value**, in MySQL's order (`my_default.cc`):
+  1. **comment cut:** a `#` outside quotes ends the value (openssl
+     `cakey.pem# note`). Quote regions are tracked anywhere in the value
+     — a `'` or `"` opens one, the same character closes it, and inside
+     a region `\` escapes the next character — so a `#` inside quotes
+     is kept even mid-value. An unclosed quote runs to the end of the
+     line (no comment cut, **no error**);
+  2. **trim** leading/trailing whitespace;
+  3. **unquote:** if the value is at least two characters, starts with
+     `'` or `"` and ends with the same character, those two are removed
+     (`"pa ss#word"` → `pa ss#word`, surrounding spaces kept). Quotes
+     anywhere else are literal text — a generated password like
+     `d>$_E;"%51e"!a` stays byte-for-byte;
+  4. **unescape**, inside quotes or not: `\b \t \n \r \s \\` →
+     backspace/tab/LF/CR/space/backslash; **any other `\X` keeps the
+     backslash** (`C:\Program Files`, `\$`, `\#` survive as written).
+  `key =` → `""`.
+- **No variable expansion:** `$dir`, `${dir}`, `$sect::x`,
+  `$ENV::HOME` stay literal text, like env's "no interpolation".
+- Repeated keys: the later line wins. Every value except bare keys is a
+  `Value::String`. Data keys pass the usual
+  `ignore_commented_data_keys` filter. Not a CLI output format.
+
 ### Value and format ids
 
 `Value`: Null / Bool / Int(i64) / Uint(u64) / Int128(i128) /
@@ -756,7 +833,8 @@ enables all formats; csv is positional-only — a header is a
 layouts are library-only: CLI positional sources are always plain
 paths). Output format resolution ("auto"): `-f` (ids + `debug`;
 `jsonc` = `json`) → `-o` extension → `debug` (Rust `{:#?}` of
-`Value`/`TracedValue`). With `-o` nothing goes to stdout. Deterministic
+`Value`/`Trace`; `--trace` json prints the whole `Trace`, warnings
+included). With `-o` nothing goes to stdout. Deterministic
 output: sorted keys everywhere; json = two-space pretty + trailing
 newline; env/ini = sorted dotted `key=value` lines (arrays embedded as
 JSON strings, quoting only when needed); csv = `key,value,format` rows
@@ -781,8 +859,9 @@ case folder with copied config files — never share one config between
 variant expectations. Error cases (`csv_bad`) have `config/` only.
 `multi_sources/` is the one non-standard case. Shared helpers in
 `tests/common/mod.rs`: `check(case, options)` asserts
-`serde_json::to_value(trace())` against expect.debug.json and `load()`
-against expect.json; `base()` is an explicit **flat** `Options` baseline
+`serde_json::to_value(trace().value)` against expect.debug.json,
+`trace().warnings` against the optional `expect.warnings.json`
+(absent = no warnings allowed), and `load()` against expect.json; `base()` is an explicit **flat** `Options` baseline
 (keying off, `dir_depth: 1`) that fixture cases build on instead of
 `Options::default()`, so their expectations hold even under
 `--all-features` (where the `tree` feature flips the default keying on).
@@ -840,7 +919,10 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   dt/date/time/ip/inet/cidr/mac/uuid typed +
   auto-guess + unknown-type + bad-value row assertions, PostgreSQL
   mac/inet/cidr forms), strict json, ext_override, formats_tuple,
-  custom_md, toml/ini/env basics, toml datetime following the `datetime`
+  custom_md, toml/ini/env basics, cnf (`cnf_basic` fixture — a
+  my.cnf + an openssl.cnf excerpt, with `expect.warnings.json` for the
+  skipped directives — plus `parse`-level rule tests via string
+  sources), toml datetime following the `datetime`
   feature — each behind its format's `#[cfg(feature)]`. Spreadsheet
   cases (all sheet content is db-shaped, the spreadsheet default
   layout): excel_basic (merge mode — `config` is the only non-ignored
@@ -931,7 +1013,9 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
 - `tests/cli.rs` (`#![cfg(feature = "cli")]`) — every folder under
   `tests/cli/<case>/` holds `args.txt` + one `result.*` file compared
   byte-for-byte against the binary's stdout (via
-  `env!("CARGO_BIN_EXE_c4")`); non-stdout behaviors (cwd default, `-o`
+  `env!("CARGO_BIN_EXE_c4")`; `cnf_trace` shows warnings in `--trace`
+  output; `warnings_go_to_stderr_in_every_mode` covers the stderr
+  lines); non-stdout behaviors (cwd default, `-o`
   writing, `-f` beats `-o`, unknown-extension→debug fallback, error
   exits) are regular tests in the file.
 - `src/valid.rs` — unit tests for every shape validator, accept and
@@ -992,7 +1076,9 @@ paths).
   1-tuple `(value,)` → `Value` via `src/ser.rs`). There is no `sources!`
   macro and no `c4::value` — the `sources` list is a plain
   `vec![… .into()]`.
-- `src/trace.rs` — `SourceRef`, `TracedValue` and the `$id` serialization.
+- `src/trace.rs` — `SourceRef`, `Trace`, `TracedValue`, `Warning`, the
+  `$id` serialization and `From<TracedValue> for Value` (dropping the
+  provenance — what `load()` does).
 - `src/loader.rs` — `Loader` plus all scanning/merging internals (scan,
   including the commented file/dir name skips → parse → merge with
   provenance; `load()` = `trace()` minus labels, one code path).
@@ -1009,7 +1095,7 @@ paths).
 - `src/format/` — one module per format behind its feature, each
   pulling in only its own parser dependency: jsonc converts
   jsonc-parser's native value (no serde_json); json needs serde_json;
-  yaml/toml use serde_yaml/toml; ini/env are hand-rolled (env:
+  yaml/toml use serde_yaml/toml; ini/cnf/env are hand-rolled (env:
   `KEY=VALUE`, `#` comments, optional `export`, quote stripping, no
   interpolation, values always strings); csv lowers to rows for
   `table.rs` (always compiled); sheet.rs (gated on
@@ -1029,7 +1115,7 @@ paths).
   formats); `tree` is a **default-preset** (no code gate — it flips the
   keying defaults in `Options::default()` via `cfg!`, see "Folder
   keying"); `excel` and `ods` (both `dep:calamine`) are format features
-  like any other; `cli` implies all formats + `datetime`, `inet`,
+  like any other; `cnf` is a format feature with no dependency; `cli` implies all formats + `datetime`, `inet`,
   `macaddr`, `uuid`, `numeric` — **not** `tree` (so the binary is
   flat-by-default). `default = ["jsonc"]`.
 - Crate naming (decided 2026-07-05): the crates.io package is

@@ -1,28 +1,31 @@
 {
-  "db": {
-    "host": {
+  "value": {
+    "db": {
+      "host": {
+        "$id": "Leaf",
+        "format": "str",
+        "source": "tests/fixtures/simple/config/db.yml",
+        "value": "localhost"
+      },
+      "port": {
+        "$id": "Leaf",
+        "format": "i64",
+        "source": "tests/fixtures/simple/config/db.yml",
+        "value": 5432
+      }
+    },
+    "name": {
       "$id": "Leaf",
       "format": "str",
-      "source": "tests/fixtures/simple/config/db.yml",
-      "value": "localhost"
+      "source": "tests/fixtures/simple/config/app.json",
+      "value": "c4"
     },
     "port": {
       "$id": "Leaf",
       "format": "i64",
-      "source": "tests/fixtures/simple/config/db.yml",
-      "value": 5432
+      "source": "tests/fixtures/simple/config/app.json",
+      "value": 8080
     }
   },
-  "name": {
-    "$id": "Leaf",
-    "format": "str",
-    "source": "tests/fixtures/simple/config/app.json",
-    "value": "c4"
-  },
-  "port": {
-    "$id": "Leaf",
-    "format": "i64",
-    "source": "tests/fixtures/simple/config/app.json",
-    "value": 8080
-  }
+  "warnings": []
 }

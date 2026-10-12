@@ -46,7 +46,7 @@ reinvent one:
 
 One call, one path — a folder whose files deep-merge, or a single file
 (the default build reads jsonc; every other format — yaml, toml, ini,
-env, csv, excel, ods, strict json — is one Cargo feature away):
+cnf, env, csv, excel, ods, strict json — is one Cargo feature away):
 
 ```rust
 let value: c4::Value = c4::load("config")?;   // a folder …
@@ -100,7 +100,7 @@ form), plus output flags `-f`/`-o`/`--trace`:
 ```sh
 c4                        # read ./config, print the Rust Debug form
 c4 ./config -f yaml       # explicit sources, choose the output format
-c4 --trace -f json        # provenance tree (source + format per value) as JSON
+c4 --trace -f json        # provenance tree (source + format per value) + warnings as JSON
 c4 --tree                 # key by folder/file/sheet name (a preset)
 c4 --help                 # every flag, with examples and notes
 ```

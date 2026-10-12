@@ -100,7 +100,10 @@ fn trace_returns_typed_tree() {
     // only its serialized form
     use c4::{SourceRef, TracedValue, Value};
 
-    let traced = loader(vec![fx("simple/config").into()]).trace().unwrap();
+    let traced = loader(vec![fx("simple/config").into()])
+        .trace()
+        .unwrap()
+        .value;
 
     let TracedValue::Object(root) = traced else {
         panic!("root must be an object");

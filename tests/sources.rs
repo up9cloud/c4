@@ -46,7 +46,7 @@ fn later_sources_override_earlier() {
         fx("multi_sources/local.json").into(),
     ]);
 
-    let traced_json = serde_json::to_value(loader.trace().unwrap()).unwrap();
+    let traced_json = serde_json::to_value(loader.trace().unwrap().value).unwrap();
     assert_eq!(traced_json, expect_debug("multi_sources"));
     let plain: Json = loader.load().unwrap();
     assert_eq!(plain, expect("multi_sources"));
@@ -61,7 +61,7 @@ fn string_source_overrides_files() {
     ]);
 
     // string sources serialize in traces as "string:<index in sources>"
-    let traced_json = serde_json::to_value(loader.trace().unwrap()).unwrap();
+    let traced_json = serde_json::to_value(loader.trace().unwrap().value).unwrap();
     assert_eq!(
         traced_json,
         json!({
@@ -108,7 +108,7 @@ fn value_source_overrides_files() {
     ]);
 
     // typed sources trace as "value:<index in sources>"
-    let traced_json = serde_json::to_value(loader.trace().unwrap()).unwrap();
+    let traced_json = serde_json::to_value(loader.trace().unwrap().value).unwrap();
     assert_eq!(
         traced_json["port"],
         json!({ "$id": "Leaf", "value": 1, "source": "value:1", "format": "i64" })

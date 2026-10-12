@@ -1,6 +1,7 @@
-//! Provenance: [`SourceRef`] labels and the [`TracedValue`] tree that
-//! `Loader::trace` returns. Serializes to `$id`-tagged JSON leaves — a
-//! debug/test aid, never config data.
+//! Provenance: [`SourceRef`] labels, the [`TracedValue`] tree and the
+//! [`Warning`]s that `Loader::trace` returns together as a [`Trace`].
+//! Serializes to `$id`-tagged JSON leaves — a debug/test aid, never
+//! config data.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -24,9 +25,7 @@ pub enum SourceRef {
     Value(usize),
 }
 
-/// The result of [`Loader::trace`](crate::Loader::trace): the merged tree
-/// with per-leaf
-/// provenance. Objects recurse; every non-object value (including whole
+/// The merged tree of a [`Trace`], with per-leaf provenance. Objects recurse; every non-object value (including whole
 /// arrays) is a [`TracedValue::Leaf`].
 ///
 /// Serializes to JSON as
@@ -39,6 +38,75 @@ pub enum SourceRef {
 pub enum TracedValue {
     Leaf { value: Value, source: SourceRef },
     Object(BTreeMap<String, TracedValue>),
+}
+
+/// The result of [`Loader::trace`](crate::Loader::trace): the merged
+/// tree plus the warnings collected while loading it.
+///
+/// Serializes to JSON as `{ "value": …, "warnings": […] }` — both keys
+/// always present.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Trace {
+    pub value: TracedValue,
+    /// In load order. Empty unless some input was accepted but not acted
+    /// on — so far only skipped cnf directives (`!include`, `.include`, …).
+    pub warnings: Vec<Warning>,
+}
+
+/// Input c4 accepted but did not act on. Only a [`Trace`] carries
+/// warnings: the library never prints them, and `load()` drops them.
+///
+/// `Display` and the serialized `{ "source", "message" }` form use the
+/// same source label as the trace leaves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Warning {
+    pub source: SourceRef,
+    /// Starts with the line number where there is one: `line 4: …`.
+    pub message: String,
+}
+
+impl std::fmt::Display for Warning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.source.label(), self.message)
+    }
+}
+
+impl serde::Serialize for Warning {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("source", &self.source.label())?;
+        map.serialize_entry("message", &self.message)?;
+        map.end()
+    }
+}
+
+impl serde::Serialize for Trace {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("value", &self.value)?;
+        map.serialize_entry("warnings", &self.warnings)?;
+        map.end()
+    }
+}
+
+/// Drop the provenance: the plain merged value, as `load()` returns it.
+impl From<TracedValue> for Value {
+    fn from(traced: TracedValue) -> Value {
+        match traced {
+            TracedValue::Leaf { value, .. } => value,
+            TracedValue::Object(entries) => {
+                Value::Object(entries.into_iter().map(|(k, v)| (k, v.into())).collect())
+            }
+        }
+    }
 }
 
 impl SourceRef {

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
 
-use crate::trace::{SourceRef, TracedValue};
+use crate::trace::{SourceRef, Trace, TracedValue, Warning};
 use crate::{Error, Format, FormatKind, Options, Order, Result, Source, Value, de, format};
 
 /// Loads and merges the config sources named by its [`Options`].
@@ -27,15 +27,18 @@ impl Loader {
     ///
     /// [`Value`] implements `Deserialize`, so `T = Value` gives dynamic
     /// access and any other serde type gives typed config.
+    ///
+    /// [`Warning`]s are dropped — call [`Loader::trace`] to see why some
+    /// input was not used (a skipped cnf `!include`, for instance).
     pub fn load<T: DeserializeOwned>(&self) -> Result<T> {
-        let value = untrace(self.trace()?);
+        let value = self.trace()?.value.into();
         T::deserialize(de::ValueDeserializer::new(value))
             .map_err(|e| Error::Deserialize(e.to_string()))
     }
 
-    /// Like [`Loader::load`], but keeps per-leaf provenance — see
-    /// [`TracedValue`]. This powers the CLI `--trace` mode; source labels
-    /// are a debug/testing aid, not config data.
+    /// Like [`Loader::load`], but keeps per-leaf provenance and the
+    /// [`Warning`]s — see [`Trace`]. This powers the CLI `--trace` mode;
+    /// source labels are a debug/testing aid, not config data.
     ///
     /// ```
     /// use c4::{CustomFormat, Loader, TracedValue};
@@ -52,37 +55,42 @@ impl Loader {
     ///     c4::parse_table(rows, &c4::TableLayout::Kv, path, options)
     /// });
     ///
-    /// let traced = Loader::new(c4::Options {
+    /// let trace = Loader::new(c4::Options {
     ///     sources: vec![(kv, "port=8080").into()],
     ///     ..c4::Options::default()
     /// })
     /// .trace()?;
-    /// let TracedValue::Object(root) = &traced else { unreachable!() };
+    /// assert!(trace.warnings.is_empty());
+    /// let TracedValue::Object(root) = &trace.value else { unreachable!() };
     /// let TracedValue::Leaf { value, source } = &root["port"] else { unreachable!() };
     /// assert_eq!(value.as_u64(), Some(8080));
     /// assert_eq!(source, &c4::SourceRef::String(0)); // "string:0" in traces
     /// # Ok(())
     /// # }
     /// ```
-    pub fn trace(&self) -> Result<TracedValue> {
+    pub fn trace(&self) -> Result<Trace> {
         let extensions = extension_map(&self.options);
         let mut root = TracedValue::Object(BTreeMap::new());
+        let mut warnings = Vec::new();
 
         for (index, source) in self.options.sources.iter().enumerate() {
             match source {
                 // one path source: a folder whose files merge, or a single
                 // file — detected here (same rule as `c4::load`)
                 Source::Path(path) if path.is_dir() => {
-                    self.load_folder(path, &extensions, &mut root)?;
+                    self.load_folder(path, &extensions, &mut root, &mut warnings)?;
                 }
                 Source::Path(path) if path.is_file() => {
                     let claim = claimed_format(path, &extensions).ok_or_else(|| Error::Parse {
                         path: path.clone(),
                         message: "no active format claims this file's extension".into(),
                     })?;
-                    let value = self.parse_file(claim, path)?;
+                    let source = SourceRef::File(path.clone());
+                    let mut messages = Vec::new();
+                    let value = self.parse_file(claim, path, &mut messages)?;
+                    note(&mut warnings, &source, messages);
                     if !matches!(value, Value::Null) {
-                        self.merge(&mut root, value, &SourceRef::File(path.clone()));
+                        self.merge(&mut root, value, &source);
                     }
                 }
                 Source::Path(path) => return Err(Error::NotFound(path.clone())),
@@ -126,6 +134,7 @@ impl Loader {
                 }
                 Source::String { format, content } => {
                     let label = PathBuf::from(format!("string:{index}"));
+                    let mut messages = Vec::new();
                     let value = match format {
                         // `format::parse` filters commented data keys
                         // itself; a custom parser's result is filtered here
@@ -135,6 +144,7 @@ impl Loader {
                             &crate::TableLayout::Kv,
                             &label,
                             &self.options,
+                            &mut messages,
                         )?,
                         FormatKind::Custom(custom) => {
                             let mut value = (custom.parser)(content, &label, &self.options)?;
@@ -142,16 +152,21 @@ impl Loader {
                             value
                         }
                     };
+                    let source = SourceRef::String(index);
+                    note(&mut warnings, &source, messages);
                     if !matches!(value, Value::Null) {
-                        self.merge(&mut root, value, &SourceRef::String(index));
+                        self.merge(&mut root, value, &source);
                     }
                 }
             }
         }
-        Ok(root)
+        Ok(Trace {
+            value: root,
+            warnings,
+        })
     }
 
-    fn parse_file(&self, claim: Claim, path: &Path) -> Result<Value> {
+    fn parse_file(&self, claim: Claim, path: &Path, warnings: &mut Vec<String>) -> Result<Value> {
         match claim {
             Claim::Builtin { format, spec } => {
                 // the claiming formats entry decides the table layout
@@ -163,7 +178,7 @@ impl Loader {
                     return format::parse_binary(format, path, layout, &self.options);
                 }
                 let text = std::fs::read_to_string(path).map_err(Error::Io)?;
-                format::parse(format, &text, layout, path, &self.options)
+                format::parse(format, &text, layout, path, &self.options, warnings)
             }
             Claim::Custom(index) => {
                 let FormatKind::Custom(custom) = &self.options.formats[index].format else {
@@ -197,6 +212,7 @@ impl Loader {
         folder: &Path,
         extensions: &[(String, Claim)],
         root: &mut TracedValue,
+        warnings: &mut Vec<Warning>,
     ) -> Result<()> {
         let mut files = Vec::new();
         walk(
@@ -212,8 +228,9 @@ impl Loader {
                 .and_then(|n| n.to_str())
                 .unwrap_or_default()
                 .to_owned();
+            let mut messages = Vec::new();
             let value = match claimed_format(&file, extensions) {
-                Some(claim) => self.parse_file(claim, &file)?,
+                Some(claim) => self.parse_file(claim, &file, &mut messages)?,
                 // extension-less / unknown-extension handling only applies
                 // when a file becomes a key; otherwise the file has no key
                 // to contribute under and is skipped
@@ -234,6 +251,8 @@ impl Loader {
                 }
                 None => continue, // no active format claims this extension
             };
+            let source = SourceRef::File(file);
+            note(warnings, &source, messages);
             if matches!(value, Value::Null) {
                 continue; // empty file contributes nothing
             }
@@ -246,7 +265,7 @@ impl Loader {
                     value = Value::Object(BTreeMap::from([(key, value)]));
                 }
             }
-            self.merge(root, value, &SourceRef::File(file));
+            self.merge(root, value, &source);
         }
         Ok(())
     }
@@ -381,6 +400,13 @@ fn walk(
     Ok(())
 }
 
+fn note(warnings: &mut Vec<Warning>, source: &SourceRef, messages: Vec<String>) {
+    warnings.extend(messages.into_iter().map(|message| Warning {
+        source: source.clone(),
+        message,
+    }));
+}
+
 /// Deep-merge `value` (labeled with `source`) into the traced tree:
 /// objects merge recursively, everything else replaces.
 fn merge_traced(target: &mut TracedValue, value: Value, source: &SourceRef, lowercase: bool) {
@@ -414,14 +440,5 @@ fn to_traced(value: Value, source: &SourceRef, lowercase: bool) -> TracedValue {
             value: other,
             source: source.clone(),
         },
-    }
-}
-
-fn untrace(traced: TracedValue) -> Value {
-    match traced {
-        TracedValue::Leaf { value, .. } => value,
-        TracedValue::Object(entries) => {
-            Value::Object(entries.into_iter().map(|(k, v)| (k, untrace(v))).collect())
-        }
     }
 }

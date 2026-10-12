@@ -2,7 +2,8 @@
 //! expectation files — `expect.json` (the plain merged result, what
 //! `load()` returns) and `expect.debug.json` (the serialized trace:
 //! `$id`-tagged leaves with value + source + format, what `trace()`
-//! serializes to).
+//! serializes to) — plus an optional `expect.warnings.json` (the trace's
+//! warnings; absent means none are allowed).
 
 #![allow(dead_code)] // each test binary uses a subset of these helpers
 
@@ -52,12 +53,23 @@ pub fn check(case: &str, mut options: c4::Options) {
     options.sources = vec![format!("tests/fixtures/{case}/config").into()];
     let loader = c4::Loader::new(options);
 
-    let traced = loader.trace().unwrap();
-    let traced_json = serde_json::to_value(&traced).unwrap();
+    let trace = loader.trace().unwrap();
+    let traced_json = serde_json::to_value(&trace.value).unwrap();
     assert_eq!(
         traced_json,
         expect_debug(case),
         "traced output mismatch for case {case}"
+    );
+    let warnings_path = format!("tests/fixtures/{case}/expect.warnings.json");
+    let expected_warnings = if std::path::Path::new(&warnings_path).exists() {
+        read(warnings_path)
+    } else {
+        Json::Array(Vec::new())
+    };
+    assert_eq!(
+        serde_json::to_value(&trace.warnings).unwrap(),
+        expected_warnings,
+        "warnings mismatch for case {case}"
     );
 
     let plain: Json = loader.load().unwrap();

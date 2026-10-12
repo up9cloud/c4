@@ -33,6 +33,9 @@ pub enum Format {
     Yaml,
     Toml,
     Ini,
+    /// Lenient INI-like option files with no spec (`my.cnf`,
+    /// `openssl.cnf`). Feature `cnf`.
+    Cnf,
     Env,
     Csv,
     /// Excel workbooks (`xlsx`/`xlsm`/`xlsb`/`xls`) — a binary
@@ -45,7 +48,7 @@ pub enum Format {
 
 impl Format {
     /// Look a format up by its string id (`"json"`, `"jsonc"`, `"yaml"`,
-    /// `"toml"`, `"ini"`, `"env"`, `"csv"`, `"excel"`, `"ods"`).
+    /// `"toml"`, `"ini"`, `"cnf"`, `"env"`, `"csv"`, `"excel"`, `"ods"`).
     pub fn from_id(id: &str) -> Option<Format> {
         Some(match id {
             "json" => Format::Json,
@@ -53,6 +56,7 @@ impl Format {
             "yaml" => Format::Yaml,
             "toml" => Format::Toml,
             "ini" => Format::Ini,
+            "cnf" => Format::Cnf,
             "env" => Format::Env,
             "csv" => Format::Csv,
             "excel" => Format::Excel,
@@ -69,6 +73,7 @@ impl Format {
             Format::Yaml => "yaml",
             Format::Toml => "toml",
             Format::Ini => "ini",
+            Format::Cnf => "cnf",
             Format::Env => "env",
             Format::Csv => "csv",
             Format::Excel => "excel",
@@ -88,6 +93,7 @@ impl Format {
             Format::Yaml => &["yml", "yaml"],
             Format::Toml => &["toml"],
             Format::Ini => &["ini"],
+            Format::Cnf => &["cnf"],
             Format::Env => &["env"],
             Format::Csv => &["csv"],
             Format::Excel => &["xlsx", "xlsm", "xlsb", "xls"],
@@ -993,6 +999,8 @@ fn enabled_formats() -> Vec<FormatSpec> {
     formats.push(Format::Toml.into());
     #[cfg(feature = "ini")]
     formats.push(Format::Ini.into());
+    #[cfg(feature = "cnf")]
+    formats.push(Format::Cnf.into());
     #[cfg(feature = "env")]
     formats.push(Format::Env.into());
     #[cfg(feature = "csv")]

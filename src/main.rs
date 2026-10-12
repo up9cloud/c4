@@ -222,10 +222,13 @@ fn run() -> Result<(), String> {
     };
 
     let loader = Loader::new(opts);
-    // load the typed result first: debug prints it directly, every other
-    // format goes through one serde_json tree
+    // debug prints the typed result directly, every other format goes
+    // through one serde_json tree
+    let traced = loader.trace().map_err(|e| e.to_string())?;
+    for warning in &traced.warnings {
+        eprintln!("c4: warning: {warning}");
+    }
     let text = if trace {
-        let traced = loader.trace().map_err(|e| e.to_string())?;
         match format {
             OutFormat::Debug => format!("{traced:#?}\n"),
             _ => emit(
@@ -234,7 +237,7 @@ fn run() -> Result<(), String> {
             )?,
         }
     } else {
-        let value: c4::Value = loader.load().map_err(|e| e.to_string())?;
+        let value: c4::Value = traced.value.into();
         match format {
             OutFormat::Debug => format!("{value:#?}\n"),
             _ => emit(

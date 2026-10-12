@@ -1,0 +1,50 @@
+{
+  "CA_default": {
+    "certs": "$dir/certs",
+    "default_md": "default",
+    "dir": "./demoCA",
+    "private_key": "$dir/private/cakey.pem"
+  },
+  "HOME": ".",
+  "client": {
+    "password": "pa ss#word",
+    "port": "3306",
+    "socket": "/var/run/mysqld/mysqld.sock"
+  },
+  "mysqld": {
+    "basedir": "C:\\Program Files\\MySQL",
+    "bind-address": "127.0.0.1",
+    "ft_stopword_file": "a b\tc",
+    "init-connect": "SET NAMES utf8mb4",
+    "log-error": "",
+    "plugin-load-add": "auth_socket.so",
+    "port": "3307",
+    "skip-external-locking": true,
+    "skip-networking": true,
+    "sql_mode": "STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION",
+    "user": "mysql"
+  },
+  "mysqldump": {
+    "max_allowed_packet": "16M",
+    "quick": true
+  },
+  "openssl_conf": "openssl_init",
+  "req": {
+    "default_bits": "2048",
+    "distinguished_name": "req_distinguished_name",
+    "recipient": "/C=FI/O=Insta Demo/CN=Insta Demo CA",
+    "subject": "/CN=openssl-cmp-test"
+  },
+  "req_distinguished_name": {
+    "0.organizationName": "Organization Name (eg, company)",
+    "1.organizationName": "Second Organization Name (eg, company)",
+    "commonName_max": "64",
+    "countryName": "Country Name (2 letter code)"
+  },
+  "v3_ca": {
+    "basicConstraints": "critical,CA:true",
+    "literal": "\\$dir and a\\;b",
+    "oid_file": "${ENV::HOME}/.oid",
+    "subjectAltName": "DNS:example.com,DNS:www.example.com"
+  }
+}

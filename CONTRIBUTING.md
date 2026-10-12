@@ -39,7 +39,8 @@ behavior. README.md is the user-facing overview; keep it simple.
 - One fixture per scenario: `tests/fixtures/<case>/` with `config/`
   (the input), `expect.json` (the plain merged result) and
   `expect.debug.json` (the serialized trace: `$id`-tagged leaves with
-  value + source + format). Error cases have `config/` only.
+  value + source + format), plus `expect.warnings.json` when the case
+  expects trace warnings. Error cases have `config/` only.
 - Binary spreadsheet fixtures (`.xlsx`/`.ods`) are never hand-edited:
   `cargo run --manifest-path tools/gen-sheets/Cargo.toml` (a
   zero-dependency Rust tool) regenerates them all — plus the

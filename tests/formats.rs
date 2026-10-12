@@ -3,7 +3,7 @@
 //! feature-gated typed formats with their PostgreSQL shapes, extended
 //! types, header options, row errors), strict json, extension
 //! reassignment, format-spec forms, a custom markdown-table format, and
-//! toml/ini/env basics.
+//! toml/ini/cnf/env basics.
 
 mod common;
 
@@ -368,7 +368,10 @@ mod csv {
     /// use string sources so each test only involves its own type id.
     #[allow(dead_code)] // unused when no value-parser feature is on
     fn csv_leaf(row: &str, key: &str) -> c4::Value {
-        let traced = loader(vec![(c4::Format::Csv, row).into()]).trace().unwrap();
+        let traced = loader(vec![(c4::Format::Csv, row).into()])
+            .trace()
+            .unwrap()
+            .value;
         let c4::TracedValue::Object(root) = traced else {
             panic!("root must be an object");
         };
@@ -918,7 +921,8 @@ fn toml_datetime_follows_dt_feature() {
 
     let traced = loader(vec![fx("toml_datetime/config").into()])
         .trace()
-        .unwrap();
+        .unwrap()
+        .value;
     let TracedValue::Object(root) = traced else {
         panic!("root must be an object");
     };
@@ -936,6 +940,211 @@ fn toml_datetime_follows_dt_feature() {
 fn ini_basic() {
     // ini has no value types: everything is a string; sections nest
     check("ini_basic", base());
+}
+
+#[cfg(feature = "ini")]
+#[test]
+fn ini_stays_strict() {
+    // the bare-key line cnf accepts is still an ini error
+    let err = loader(vec![
+        (c4::Format::Ini, "[mysqld]\nskip-networking\n").into(),
+    ])
+    .load::<c4::Value>()
+    .unwrap_err();
+    assert!(err.to_string().contains("line 2"), "{err}");
+}
+
+#[cfg(feature = "cnf")]
+mod cnf {
+    use crate::common::{base, check, loader};
+    use c4::{SourceRef, Value};
+
+    fn parse(text: &str) -> Value {
+        loader(vec![("cnf", text).into()]).load().unwrap()
+    }
+
+    fn parse_err(text: &str) -> String {
+        loader(vec![("cnf", text).into()])
+            .load::<Value>()
+            .unwrap_err()
+            .to_string()
+    }
+
+    #[test]
+    fn my_cnf_and_openssl_cnf() {
+        // real-world shapes of both dialects; the four directives are
+        // skipped with a warning each
+        check("cnf_basic", base());
+    }
+
+    #[test]
+    fn quotes_count_only_around_the_whole_value() {
+        let v = parse(
+            r##"a = "x y"  # note
+b = ' x '
+c = "x"y
+d = d>$_E;"%51e"!a
+e = x"#y"z
+f = "
+g = "x
+h = 'x # not a comment
+"##,
+        );
+        assert_eq!(v["a"].as_str(), Some("x y"));
+        assert_eq!(v["b"].as_str(), Some(" x "));
+        // quotes anywhere else are literal text
+        assert_eq!(v["c"].as_str(), Some(r#""x"y"#));
+        assert_eq!(v["d"].as_str(), Some(r#"d>$_E;"%51e"!a"#));
+        // but a quote region still shields `#` from the comment cut
+        assert_eq!(v["e"].as_str(), Some(r##"x"#y"z"##));
+        // a lone or unclosed quote is text, not an error, and runs to
+        // the end of the line
+        assert_eq!(v["f"].as_str(), Some(r#"""#));
+        assert_eq!(v["g"].as_str(), Some(r#""x"#));
+        assert_eq!(v["h"].as_str(), Some("'x # not a comment"));
+    }
+
+    #[test]
+    fn escapes_follow_mysql_and_keep_unknown_backslashes() {
+        let v = parse(
+            r#"a = \b\t\n\r\s\\
+b = \$\=\;x
+i = a\#b
+c = C:\Temp\x
+d = '\n'
+e = "a\"b"
+"#,
+        );
+        assert_eq!(v["a"].as_str(), Some("\u{8}\t\n\r \\"));
+        assert_eq!(v["b"].as_str(), Some(r"\$\=\;x"));
+        // `\#` outside quotes is still a comment, as in MySQL
+        assert_eq!(v["i"].as_str(), Some(r"a\"));
+        assert_eq!(v["c"].as_str(), Some(r"C:\Temp\x"));
+        // escapes apply inside either quote
+        assert_eq!(v["d"].as_str(), Some("\n"));
+        assert_eq!(v["e"].as_str(), Some(r#"a\"b"#));
+    }
+
+    #[test]
+    fn whitespace_is_trimmed_before_escapes_and_unquoting() {
+        let v = parse("a = x  \nb = \"x  \"\nc = x\\s\nd =\n");
+        assert_eq!(v["a"].as_str(), Some("x"));
+        assert_eq!(v["b"].as_str(), Some("x  "));
+        assert_eq!(v["c"].as_str(), Some("x "));
+        assert_eq!(v["d"].as_str(), Some(""));
+    }
+
+    #[test]
+    fn comments() {
+        // `;` and `%` only at line start; `#` anywhere outside quotes
+        let v = parse(
+            "; note\n  # note\n% tex\na = x;y # z\nb = $T/%s ; 50%\nflag # before any =\nk#ey = v\n",
+        );
+        assert_eq!(v["a"].as_str(), Some("x;y"));
+        assert_eq!(v["b"].as_str(), Some("$T/%s ; 50%"));
+        assert_eq!(v["flag"].as_bool(), Some(true));
+        assert_eq!(v["k"].as_bool(), Some(true));
+        assert!(v["k#ey"].is_null());
+    }
+
+    #[test]
+    fn keys_stay_literal_even_with_dot_key() {
+        let v: Value = c4::Loader::new(c4::Options {
+            sources: vec![("cnf", "[a.b]\n0.x = 1\nitems[] = 2\n").into()],
+            dot_key: true,
+            ..base()
+        })
+        .load()
+        .unwrap();
+        assert_eq!(v["a.b"]["0.x"].as_str(), Some("1"));
+        assert_eq!(v["a.b"]["items[]"].as_str(), Some("2"));
+    }
+
+    #[test]
+    fn sections_merge_and_later_keys_win() {
+        let v = parse("a = 1\n[s]\nx = 1\n[t]\n[s]\nx = 2\ny = 3\n[a]\nz = 4\n");
+        assert_eq!(v["s"]["x"].as_str(), Some("2"));
+        assert_eq!(v["s"]["y"].as_str(), Some("3"));
+        // a header over an earlier root scalar replaces it
+        assert_eq!(v["a"]["z"].as_str(), Some("4"));
+        // an empty section contributes an empty object
+        assert!(v["t"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn header_may_carry_a_comment() {
+        let v = parse("[ s ] # note\nx = 1\n[t] ; note\ny = 2\n");
+        assert_eq!(v["s"]["x"].as_str(), Some("1"));
+        assert_eq!(v["t"]["y"].as_str(), Some("2"));
+    }
+
+    #[test]
+    fn crlf_and_bom() {
+        let v = parse("\u{feff}[s]\r\nx = 1\r\n");
+        assert_eq!(v["s"]["x"].as_str(), Some("1"));
+    }
+
+    #[test]
+    fn no_line_continuation() {
+        // MySQL lets a value end in a literal backslash
+        let v = parse("datadir = C:\\data\\\nport = 3306\n");
+        assert_eq!(v["datadir"].as_str(), Some(r"C:\data\"));
+        assert_eq!(v["port"].as_str(), Some("3306"));
+    }
+
+    #[test]
+    fn variables_stay_literal() {
+        let v = parse("a = $dir/x ${dir} $s::k $ENV::HOME\n");
+        assert_eq!(v["a"].as_str(), Some("$dir/x ${dir} $s::k $ENV::HOME"));
+    }
+
+    #[test]
+    fn directive_forms() {
+        // `.include=path` is a directive too; `.included` is an ordinary key
+        let trace = loader(vec![
+            (
+                "cnf",
+                "!include a.cnf # why\n.include=b.cnf\n.included = k\n",
+            )
+                .into(),
+        ])
+        .trace()
+        .unwrap();
+        let messages: Vec<_> = trace.warnings.iter().map(|w| w.message.as_str()).collect();
+        let hint = " (c4 does not process directives; add included files as sources)";
+        assert_eq!(
+            messages,
+            [
+                format!("line 1: ignored directive '!include a.cnf'{hint}"),
+                format!("line 2: ignored directive '.include=b.cnf'{hint}"),
+            ]
+        );
+        assert_eq!(trace.warnings[0].source, SourceRef::String(0));
+        assert_eq!(
+            trace.warnings[0].to_string(),
+            format!("string:0: line 1: ignored directive '!include a.cnf'{hint}")
+        );
+        let v: Value = trace.value.into();
+        assert_eq!(v[".included"].as_str(), Some("k"));
+    }
+
+    #[test]
+    fn load_drops_warnings() {
+        assert_eq!(parse("!include x\na = 1\n")["a"].as_str(), Some("1"));
+    }
+
+    #[test]
+    fn errors() {
+        for (text, needle) in [
+            ("[s\n", "line 1"),
+            ("[ ]\n", "line 1"),
+            ("[s] x\n", "line 1"),
+            ("a = 1\n= 2\n", "line 2"),
+        ] {
+            let err = parse_err(text);
+            assert!(err.contains(needle), "{text:?}: {err}");
+        }
+    }
 }
 
 #[cfg(feature = "env")]
@@ -1193,7 +1402,7 @@ mod table_layouts {
 
     fn check_table(case: &str, sources: Vec<c4::Source>) {
         let loader = loader(sources);
-        let traced = serde_json::to_value(loader.trace().unwrap()).unwrap();
+        let traced = serde_json::to_value(loader.trace().unwrap().value).unwrap();
         assert_eq!(traced, expect_debug(case), "trace mismatch for {case}");
         let plain: serde_json::Value = loader.load().unwrap();
         assert_eq!(plain, expect(case), "load mismatch for {case}");
@@ -1337,7 +1546,7 @@ mod excel_sheet_sources {
             (c4::Format::Excel, path, "_extra", "kv").into(),
         ]);
         assert_eq!(
-            serde_json::to_value(loader.trace().unwrap()).unwrap(),
+            serde_json::to_value(loader.trace().unwrap().value).unwrap(),
             expect_debug("excel_sheets")
         );
         let plain: serde_json::Value = loader.load().unwrap();

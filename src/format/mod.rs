@@ -1,6 +1,8 @@
 //! One module per format, each gated by its Cargo feature. `parse` is the
 //! single dispatch point used by the loader.
 
+#[cfg(feature = "cnf")]
+mod cnf;
 #[cfg(feature = "csv")]
 mod csv;
 #[cfg(feature = "env")]
@@ -109,8 +111,9 @@ pub(crate) fn parse(
     layout: &TableLayout,
     path: &Path,
     options: &Options,
+    warnings: &mut Vec<String>,
 ) -> Result<Value> {
-    let _ = (text, layout); // unused when few formats are compiled in
+    let _ = (text, layout, &warnings); // unused when few formats are compiled in
     let mut value = match format {
         // binary formats never come through the text pipeline; a string
         // source naming one lands here
@@ -128,6 +131,8 @@ pub(crate) fn parse(
         Format::Toml => toml::parse(text, path),
         #[cfg(feature = "ini")]
         Format::Ini => ini::parse(text, path),
+        #[cfg(feature = "cnf")]
+        Format::Cnf => cnf::parse(text, path, warnings),
         #[cfg(feature = "env")]
         Format::Env => env::parse(text, options),
         #[cfg(feature = "csv")]

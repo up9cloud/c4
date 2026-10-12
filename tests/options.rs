@@ -183,7 +183,7 @@ mod tree {
     fn auto_file_content_is_typed() {
         let mut options = tree_options();
         options.sources = vec!["tests/fixtures/tree_auto/config".into()];
-        let traced = c4::Loader::new(options).trace().unwrap();
+        let traced = c4::Loader::new(options).trace().unwrap().value;
         let c4::TracedValue::Object(root) = traced else {
             panic!("root must be an object");
         };
