@@ -177,7 +177,7 @@
 //! | `jsonc` | `.json`, `.jsonc`  | default |
 //! | `yaml`  | `.yml`, `.yaml`    | `yaml`  |
 //! | `json`  | `.json` (strict)   | `json`  |
-//! | `toml`  | `.toml`            | `toml`  |
+//! | `toml` (TOML 1.1) | `.toml` | `toml` |
 //! | `ini`   | `.ini`             | `ini`   |
 //! | `cnf`   | `.cnf`             | `cnf`   |
 //! | `env`   | `.env`, `*.env`    | `env`   |

@@ -36,6 +36,9 @@ user-facing overview; keep it simple.
 2. Write the tests — fixture folder, integration test, doc tests —
    against the spec.
 3. Implement until the tests pass.
+4. A user-visible change adds its line to `CHANGELOG.md` under the
+   unreleased version — breaking and behavior changes in its upgrade
+   section, with before/after code.
 
 ## Test layout
 
@@ -89,7 +92,9 @@ token to manage).
    accurate.
 2. Bump `version` in `Cargo.toml` (the crates.io package is `c4-config`;
    the lib/binary stay `c4`). `cargo publish` uses this version, so it
-   must not already be published.
+   must not already be published. In `CHANGELOG.md`, replace the
+   version's `— unreleased` with the release date. CI checks that the
+   tag matches the `Cargo.toml` version.
 3. Tag it **with a `v` prefix** matching the version — `v0.1.1`, **not**
    `0.1.1`. Only `v*` tags trigger the release workflow (`on.push.tags:
    ["v*"]`).

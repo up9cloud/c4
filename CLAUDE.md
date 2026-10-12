@@ -20,6 +20,9 @@ Behavior lives in exactly one place, and this file refs it:
   install, the simplest `load`, the CLI, a pointer to the examples. The
   examples index lives in `examples/README.md` (owner, 2026-08-12).
 - **`src/main.rs` `USAGE`** — the CLI flag reference (`c4 --help`).
+- **CHANGELOG.md** — what changed per release, for users: an upgrade
+  section (breaking and behavior changes, with before/after code) first.
+  Every user-visible change adds its line there.
 - **CONTRIBUTING.md** — contributor conventions, short form.
 - **This file** — decisions and their reasons, invisible constraints,
   internals. A behavior change updates the rustdoc, the tests and (for a

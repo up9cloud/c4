@@ -12,6 +12,7 @@ cd examples/00_simple && cargo run
 | ------ | ----- |
 | [`00_simple`](00_simple) | the basic `load` from a config folder |
 | [`01_advanced`](01_advanced) | multi-source usage (folders + files + in-code values) |
+| [`cnf`](cnf) | `my.cnf` / `openssl.cnf` loaded as they are, the trace's warnings for skipped includes, and `into_typed` on one section |
 | [`csv-db`](csv-db) | a CSV record grid (the `db` layout) into a `Vec<Item>` |
 | [`csv-header`](csv-header) | reshaping a CSV with a `CustomFormat` (header + renamed/reordered columns) |
 | [`csv-list`](csv-list) | single cells expanded into lists via the `array` / `csv` type ids |

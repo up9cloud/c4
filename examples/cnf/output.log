@@ -1,0 +1,4 @@
+warning: config/my.cnf: line 12: ignored directive '!includedir /etc/mysql/conf.d/' (c4 does not process directives; add included files as sources)
+warning: config/openssl.cnf: line 2: ignored directive '.include /etc/ssl/extra.cnf' (c4 does not process directives; add included files as sources)
+certs = "$dir/certs"
+Mysqld { port: 3306, bind_address: "127.0.0.1", skip_networking: true, password: "pa ss#word" }

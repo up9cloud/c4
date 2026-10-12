@@ -5,11 +5,12 @@ use std::path::Path;
 use crate::{Error, Result, Value};
 
 pub(crate) fn parse(text: &str, path: &Path) -> Result<Value> {
-    let parsed: toml::Value = text.parse().map_err(|e: toml::de::Error| Error::Parse {
+    // a document is a table; `toml::Value` parses one bare value
+    let parsed: toml::Table = text.parse().map_err(|e: toml::de::Error| Error::Parse {
         path: path.to_path_buf(),
         message: e.to_string(),
     })?;
-    Ok(convert(parsed))
+    Ok(convert(toml::Value::Table(parsed)))
 }
 
 fn convert(value: toml::Value) -> Value {

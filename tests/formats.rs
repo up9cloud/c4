@@ -1027,6 +1027,23 @@ fn format_spec_string_tuple_form() {
 
 #[cfg(feature = "toml")]
 #[test]
+fn toml_1_1_syntax() {
+    // TOML 1.1: inline tables may span lines and end with a comma; `\e`
+    let value: c4::Value = loader(vec![
+        (
+            "toml",
+            "point = {\n  x = 1,\n  y = 2,\n}\nesc = \"\\e[0m\"\n",
+        )
+            .into(),
+    ])
+    .load()
+    .unwrap();
+    assert_eq!(value["point"]["y"].as_i64(), Some(2));
+    assert_eq!(value["esc"].as_str(), Some("\u{1b}[0m"));
+}
+
+#[cfg(feature = "toml")]
+#[test]
 fn toml_basic() {
     check("toml_basic", base());
 }

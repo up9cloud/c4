@@ -1,0 +1,6 @@
+# an OpenSSL configuration
+.include /etc/ssl/extra.cnf
+
+[ CA_default ]
+dir     = ./demoCA          # where everything is kept
+certs   = $dir/certs        # variables stay literal
