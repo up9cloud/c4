@@ -1,6 +1,6 @@
-//! The loader: scan sources, pick parsers by extension, deep-merge with
-//! per-leaf provenance. `load()` is `trace()` minus the labels — one
-//! code path for both.
+//! The loader: scan sources, pick parsers by extension, deep-merge. One
+//! code path for `trace()` and `load()`, generic over the merge target:
+//! the traced tree, or a plain value that skips the per-leaf provenance.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -26,7 +26,10 @@ impl Loader {
     /// Load and merge all sources, deserializing into `T`.
     ///
     /// [`Value`] implements `Deserialize`, so `T = Value` gives dynamic
-    /// access and any other serde type gives typed config.
+    /// access and any other serde type gives typed config. A `Value` —
+    /// the whole result, or a field of your struct — is handed over as
+    /// merged, typed variants (`DateTime`, `Ipv4`, …) included, exactly as
+    /// [`Loader::trace`] shows them.
     ///
     /// A **string** reaching a `bool`, integer or float field parses with
     /// the rules of that table type id (`u16`, `bool`, … — see the crate
@@ -66,7 +69,7 @@ impl Loader {
     /// [`Warning`]s are dropped — call [`Loader::trace`] to see why some
     /// input was not used (a skipped cnf `!include`, for instance).
     pub fn load<T: DeserializeOwned>(&self) -> Result<T> {
-        let value = self.trace()?.value.into();
+        let (value, _warnings) = self.run::<Value>()?;
         T::deserialize(de::ValueDeserializer::new(value))
             .map_err(|e| Error::Deserialize(e.to_string()))
     }
@@ -104,8 +107,16 @@ impl Loader {
     /// # }
     /// ```
     pub fn trace(&self) -> Result<Trace> {
+        let (value, warnings) = self.run::<TracedValue>()?;
+        Ok(Trace { value, warnings })
+    }
+
+    /// Scan, parse and merge every source into `R` — the one code path
+    /// behind both [`Loader::trace`] (a traced tree) and [`Loader::load`]
+    /// (a plain value, skipping the per-leaf provenance it would drop).
+    fn run<R: Tree>(&self) -> Result<(R, Vec<Warning>)> {
         let extensions = extension_map(&self.options);
-        let mut root = TracedValue::Object(BTreeMap::new());
+        let mut root = R::root();
         let mut warnings = Vec::new();
 
         for (index, source) in self.options.sources.iter().enumerate() {
@@ -196,10 +207,7 @@ impl Loader {
                 }
             }
         }
-        Ok(Trace {
-            value: root,
-            warnings,
-        })
+        Ok((root, warnings))
     }
 
     fn parse_file(&self, claim: Claim, path: &Path, warnings: &mut Vec<String>) -> Result<Value> {
@@ -230,8 +238,8 @@ impl Loader {
         }
     }
 
-    fn merge(&self, target: &mut TracedValue, value: Value, source: &SourceRef) {
-        merge_traced(target, value, source, !self.options.case_sensitive);
+    fn merge<R: Tree>(&self, target: &mut R, value: Value, source: &SourceRef) {
+        target.merge(value, source, !self.options.case_sensitive);
     }
 
     /// Load one folder source: scan it (honoring [`Options::dir_depth`]),
@@ -243,11 +251,11 @@ impl Loader {
     /// with both on (the `tree` feature's default) it is a folder tree.
     /// Entries load in [`Options::order`], so key collisions deep-merge
     /// with the later entry winning.
-    fn load_folder(
+    fn load_folder<R: Tree>(
         &self,
         folder: &Path,
         extensions: &[(String, Claim)],
-        root: &mut TracedValue,
+        root: &mut R,
         warnings: &mut Vec<Warning>,
     ) -> Result<()> {
         let mut files = Vec::new();
@@ -470,6 +478,65 @@ fn note(warnings: &mut Vec<Warning>, source: &SourceRef, messages: Vec<String>) 
         source: source.clone(),
         message,
     }));
+}
+
+/// What the sources merge into. Both trees deep-merge the same way —
+/// objects recurse, everything else replaces, keys lowercased when merging
+/// is case-insensitive — and differ only in whether leaves keep `source`.
+trait Tree {
+    fn root() -> Self;
+    fn merge(&mut self, value: Value, source: &SourceRef, lowercase: bool);
+}
+
+impl Tree for TracedValue {
+    fn root() -> Self {
+        TracedValue::Object(BTreeMap::new())
+    }
+
+    fn merge(&mut self, value: Value, source: &SourceRef, lowercase: bool) {
+        merge_traced(self, value, source, lowercase);
+    }
+}
+
+impl Tree for Value {
+    fn root() -> Self {
+        Value::Object(BTreeMap::new())
+    }
+
+    fn merge(&mut self, value: Value, _source: &SourceRef, lowercase: bool) {
+        merge_plain(self, value, lowercase);
+    }
+}
+
+/// [`merge_traced`] without the provenance.
+fn merge_plain(target: &mut Value, value: Value, lowercase: bool) {
+    match (target, value) {
+        (Value::Object(entries), Value::Object(incoming)) => {
+            for (key, value) in incoming {
+                let key = if lowercase { key.to_lowercase() } else { key };
+                match entries.get_mut(&key) {
+                    Some(slot) => merge_plain(slot, value, lowercase),
+                    None => {
+                        entries.insert(key, lowercased(value, lowercase));
+                    }
+                }
+            }
+        }
+        (slot, value) => *slot = lowercased(value, lowercase),
+    }
+}
+
+/// [`to_traced`] without the provenance: object keys lowercased at every
+/// level (arrays are leaves, so their objects keep their keys).
+fn lowercased(value: Value, lowercase: bool) -> Value {
+    match value {
+        Value::Object(map) if lowercase => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (key.to_lowercase(), lowercased(value, lowercase)))
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 /// Deep-merge `value` (labeled with `source`) into the traced tree:

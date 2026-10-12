@@ -128,6 +128,46 @@ fn strings_coerce_into_typed_fields() {
 }
 
 #[test]
+fn load_keeps_typed_variants() {
+    // load::<Value>() hands the merged tree over as is — no serde round
+    // trip that would flatten typed variants into strings
+    let typed = c4::CustomFormat::new("typed", ["typed"], |_, _, _| {
+        Ok(c4::Value::Object(std::collections::BTreeMap::from([
+            (
+                "when".to_owned(),
+                c4::Value::DateTime("2024-01-02T03:04:05Z".into()),
+            ),
+            ("ip".to_owned(), c4::Value::Ipv4("10.0.0.1".into())),
+        ])))
+    });
+    let loader = loader(vec![(typed, "").into()]);
+    let value: c4::Value = loader.load().unwrap();
+    assert_eq!(
+        value["when"],
+        c4::Value::DateTime("2024-01-02T03:04:05Z".into())
+    );
+    assert_eq!(value["when"].format_id(), "dt");
+    assert_eq!(value["ip"], c4::Value::Ipv4("10.0.0.1".into()));
+    assert_eq!(value["ip"].as_str(), Some("10.0.0.1"));
+    assert_eq!(value["ip"].as_ip(), Some([10, 0, 0, 1].into()));
+
+    // a Value inside a typed struct keeps its variants too
+    #[derive(serde::Deserialize)]
+    struct Cfg {
+        when: c4::Value,
+        ip: Option<c4::Value>,
+    }
+    let cfg: Cfg = loader.load().unwrap();
+    assert_eq!(cfg.when.format_id(), "dt");
+    assert_eq!(cfg.ip.unwrap().format_id(), "ipv4");
+
+    // other deserializers still build a Value the usual way
+    let from_json: c4::Value = serde_json::from_str(r#"{"a": [1, "x", null]}"#).unwrap();
+    assert_eq!(from_json["a"][0].as_i64(), Some(1));
+    assert_eq!(from_json["a"][1].as_str(), Some("x"));
+}
+
+#[test]
 fn numbers_and_bools_coerce_into_string_fields() {
     #[derive(serde::Deserialize, Debug, PartialEq)]
     struct Cfg {

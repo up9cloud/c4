@@ -19,7 +19,7 @@ Trace {
             },
             "ip4": Leaf {
                 value: Ipv4(
-                    10.0.0.1,
+                    "10.0.0.1",
                 ),
                 source: File(
                     "tests/fixtures/csv_date_time_ip/config/data.csv",
@@ -27,7 +27,7 @@ Trace {
             },
             "ip6": Leaf {
                 value: Ipv6(
-                    ::1,
+                    "::1",
                 ),
                 source: File(
                     "tests/fixtures/csv_date_time_ip/config/data.csv",

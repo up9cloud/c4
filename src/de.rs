@@ -98,9 +98,9 @@ impl<'de> Deserializer<'de> for ValueDeserializer {
             | Value::Cidr(s)
             | Value::MacAddr(s)
             | Value::MacAddr8(s)
-            | Value::Uuid(s) => visitor.visit_string(s),
-            Value::Ipv4(ip) => visitor.visit_string(ip.to_string()),
-            Value::Ipv6(ip) => visitor.visit_string(ip.to_string()),
+            | Value::Uuid(s)
+            | Value::Ipv4(s)
+            | Value::Ipv6(s) => visitor.visit_string(s),
             Value::Array(items) => visitor.visit_seq(SeqDe {
                 iter: items.into_iter(),
                 index: 0,
@@ -121,9 +121,15 @@ impl<'de> Deserializer<'de> for ValueDeserializer {
 
     fn deserialize_newtype_struct<V: Visitor<'de>>(
         self,
-        _name: &'static str,
+        name: &'static str,
         visitor: V,
     ) -> Result<V::Value, DeError> {
+        if name == crate::value::PASS_THROUGH_NAME {
+            // only `Value`'s visitor asks for this name; it takes the value
+            // back out of the slot straight away
+            crate::value::PASS_THROUGH.with(|slot| slot.set(Some(self.0)));
+            return visitor.visit_newtype_struct(ValueDeserializer(Value::Null));
+        }
         visitor.visit_newtype_struct(self)
     }
 

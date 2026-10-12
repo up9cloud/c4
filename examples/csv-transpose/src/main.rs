@@ -13,9 +13,8 @@
 //! `[key, value, format]` row that `c4::parse_table` expects, so the file
 //! above loads as `{ a: 1, b: "1.1.1.1", c: 8080 }`: `a` is an int, `c` is
 //! auto-detected, and `b`'s `ipv4` format *validates* the cell (a bad
-//! address would error). `load()` returns the value's canonical string;
-//! the typed `Value::Ipv4` only survives in `trace()`. The `csv` crate
-//! reads the grid.
+//! address would error) and loads as a typed `Value::Ipv4`, whose text
+//! `as_str()` still returns. The `csv` crate reads the grid.
 //!
 //! Run inside this folder: `cd examples/csv-transpose && cargo run`
 //! (expected output: `output.log` next to this file)

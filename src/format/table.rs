@@ -323,12 +323,12 @@ fn convert(raw: &str, declared: &str, path: &Path, row: usize, options: &Options
         #[cfg(feature = "ipv4")]
         "ipv4" => raw
             .parse::<std::net::Ipv4Addr>()
-            .map(Value::Ipv4)
+            .map(|ip| Value::Ipv4(ip.to_string()))
             .map_err(|_| bad()),
         #[cfg(feature = "ipv6")]
         "ipv6" => raw
             .parse::<std::net::Ipv6Addr>()
-            .map(Value::Ipv6)
+            .map(|ip| Value::Ipv6(ip.to_string()))
             .map_err(|_| bad()),
         // PostgreSQL semantics: a bare inet maps onto the address
         // variants; with a netmask (host bits allowed) it stays text
@@ -440,11 +440,11 @@ pub(crate) fn auto(raw: &str) -> Value {
     }
     #[cfg(feature = "ipv4")]
     if let Ok(ip) = raw.parse::<std::net::Ipv4Addr>() {
-        return Value::Ipv4(ip);
+        return Value::Ipv4(ip.to_string());
     }
     #[cfg(feature = "ipv6")]
     if let Ok(ip) = raw.parse::<std::net::Ipv6Addr>() {
-        return Value::Ipv6(ip);
+        return Value::Ipv6(ip.to_string());
     }
     // masked forms only guess when a mask is present; no bare-inet guess
     // is needed because `inet` implies `ipv4` + `ipv6`
@@ -691,8 +691,8 @@ fn float_literal(raw: &str) -> Option<f64> {
 #[cfg(feature = "inet")]
 fn ip_value(ip: std::net::IpAddr) -> Value {
     match ip {
-        std::net::IpAddr::V4(v4) => Value::Ipv4(v4),
-        std::net::IpAddr::V6(v6) => Value::Ipv6(v6),
+        std::net::IpAddr::V4(v4) => Value::Ipv4(v4.to_string()),
+        std::net::IpAddr::V6(v6) => Value::Ipv6(v6.to_string()),
     }
 }
 

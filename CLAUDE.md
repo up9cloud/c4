@@ -190,6 +190,19 @@ the statement; the crate docs do not repeat it.
 
 ### Typed loading (owner, 2026-10-12)
 
+`load` hands a `Value` over without a serde round trip, which would
+flatten typed variants (`DateTime`, `Ipv4`, …) into strings — the bug
+until 2026-10-12, caught by `tests/common`'s load-vs-trace check. Owner,
+2026-10-12: no `T: 'static` bound on `load` (users with generic wrappers
+would have to add it), so instead `Value::deserialize` asks for a
+private newtype name that `ValueDeserializer` answers by passing the
+owned value through a thread-local (`src/value.rs`, `src/de.rs`); any
+other deserializer sees an ordinary newtype and builds the value as
+usual. **Every typed value keeps text** (owner, 2026-10-12): `Ipv4`/`Ipv6`
+store their canonical text instead of `Ipv4Addr`/`Ipv6Addr`, because
+`as_str() -> Option<&str>` can only lend text that exists inside the
+value; `as_ip()` gives the address.
+
 A string reaching a bool or number field parses with that table type
 id's rules (`format::table::scalar`, shared with explicit cells), so ini,
 env and cnf — all strings — load into typed structs; a number or bool

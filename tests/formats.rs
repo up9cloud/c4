@@ -424,7 +424,7 @@ mod csv {
     fn ipv4_is_a_typed_value() {
         assert_eq!(
             csv_leaf("ip4,10.0.0.1,ipv4", "ip4"),
-            c4::Value::Ipv4("10.0.0.1".parse().unwrap())
+            c4::Value::Ipv4("10.0.0.1".into())
         );
     }
 
@@ -433,7 +433,7 @@ mod csv {
     fn ipv6_is_a_typed_value() {
         assert_eq!(
             csv_leaf("ip6,::1,ipv6", "ip6"),
-            c4::Value::Ipv6("::1".parse().unwrap())
+            c4::Value::Ipv6("::1".into())
         );
     }
 
@@ -470,12 +470,9 @@ mod csv {
     fn inet_parses_either_ip_family() {
         assert_eq!(
             csv_leaf("a,10.0.0.1,inet", "a"),
-            c4::Value::Ipv4("10.0.0.1".parse().unwrap())
+            c4::Value::Ipv4("10.0.0.1".into())
         );
-        assert_eq!(
-            csv_leaf("a,::1,inet", "a"),
-            c4::Value::Ipv6("::1".parse().unwrap())
-        );
+        assert_eq!(csv_leaf("a,::1,inet", "a"), c4::Value::Ipv6("::1".into()));
     }
 
     #[cfg(feature = "inet")]
@@ -541,7 +538,7 @@ mod csv {
         );
         assert_eq!(
             csv_leaf("a,10.0.0.1", "a"),
-            c4::Value::Ipv4("10.0.0.1".parse().unwrap())
+            c4::Value::Ipv4("10.0.0.1".into())
         );
     }
 
@@ -798,8 +795,20 @@ mod csv {
     fn auto_guesses_ipv4() {
         assert_eq!(
             csv_leaf("a,1.1.1.1", "a"),
-            c4::Value::Ipv4("1.1.1.1".parse().unwrap())
+            c4::Value::Ipv4("1.1.1.1".into())
         );
+    }
+
+    // ip values store canonical text, so as_str works like every other
+    // typed text value, and as_ip gives the address
+    #[cfg(feature = "ipv6")]
+    #[test]
+    fn ip_values_are_canonical_text() {
+        let ip = csv_leaf("a,2001:0DB8:0:0::1,ipv6", "a");
+        assert_eq!(ip, c4::Value::Ipv6("2001:db8::1".into()));
+        assert_eq!(ip.as_str(), Some("2001:db8::1"));
+        assert_eq!(ip.as_ip(), Some("2001:db8::1".parse().unwrap()));
+        assert_eq!(c4::Value::String("1.1.1.1".into()).as_ip(), None);
     }
 
     #[cfg(feature = "ipv6")]
@@ -807,7 +816,7 @@ mod csv {
     fn auto_guesses_ipv6() {
         assert_eq!(
             csv_leaf("a,2001:db8::1", "a"),
-            c4::Value::Ipv6("2001:db8::1".parse().unwrap())
+            c4::Value::Ipv6("2001:db8::1".into())
         );
     }
 
@@ -925,6 +934,25 @@ fn a_format_missing_from_formats_says_so() {
             .contains("the `yaml` format reads it but is not in `formats`"),
         "{err}"
     );
+}
+
+#[cfg(feature = "jsonc")]
+#[test]
+fn jsonc_syntax_and_duplicate_keys() {
+    let value: c4::Value = loader(vec![
+        (
+            "jsonc",
+            "{\n  // a comment\n  a: 1, /* block */ \"a\": 2,\n  \"list\": [1, 2,],\n  \"n\": {\"x\": null, \"f\": 1.5, \"u\": 18446744073709551615},\n}",
+        )
+            .into(),
+    ])
+    .load()
+    .unwrap();
+    assert_eq!(value["a"].as_i64(), Some(2)); // the later duplicate wins
+    assert_eq!(value["list"].as_array().unwrap().len(), 2);
+    assert!(value["n"].as_object().unwrap().contains_key("x"));
+    assert_eq!(value["n"]["f"].as_f64(), Some(1.5));
+    assert_eq!(value["n"]["u"].as_u64(), Some(u64::MAX));
 }
 
 #[cfg(feature = "json")]

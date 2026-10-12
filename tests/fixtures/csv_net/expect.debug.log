@@ -3,7 +3,7 @@ Trace {
         {
             "host": Leaf {
                 value: Ipv4(
-                    10.0.0.1,
+                    "10.0.0.1",
                 ),
                 source: File(
                     "tests/fixtures/csv_net/config/data.csv",
@@ -11,7 +11,7 @@ Trace {
             },
             "host6": Leaf {
                 value: Ipv6(
-                    ::1,
+                    "::1",
                 ),
                 source: File(
                     "tests/fixtures/csv_net/config/data.csv",

@@ -193,7 +193,7 @@ mod tree {
         let c4::TracedValue::Leaf { value, .. } = &a["blabla"] else {
             panic!("blabla must be a leaf");
         };
-        assert_eq!(*value, c4::Value::Ipv4("1.1.1.1".parse().unwrap()));
+        assert_eq!(*value, c4::Value::Ipv4("1.1.1.1".into()));
     }
 
     #[cfg(all(not(feature = "ipv4"), not(feature = "inet")))]

@@ -35,12 +35,15 @@ pub enum Value {
     /// `hh:mm:ss[.fraction]`, kept as its text (table `time` type, `time`
     /// feature).
     Time(String),
-    /// Table `ipv4` type (`ipv4` feature); serializes canonically. The
-    /// `inet` type (`inet` feature) also produces this or [`Value::Ipv6`],
-    /// whichever family parses.
-    Ipv4(std::net::Ipv4Addr),
-    /// Table `ipv6` type (`ipv6` feature); serializes canonically.
-    Ipv6(std::net::Ipv6Addr),
+    /// An IPv4 address, kept as its validated **canonical** text (table
+    /// `ipv4` type, `ipv4` feature) — text like every typed value, so
+    /// [`as_str`](Value::as_str) works; [`as_ip`](Value::as_ip) gives the
+    /// address. The `inet` type (`inet` feature) also produces this or
+    /// [`Value::Ipv6`], whichever family parses.
+    Ipv4(String),
+    /// An IPv6 address, kept as its validated canonical text
+    /// (`2001:0DB8::1` → `2001:db8::1`; table `ipv6` type, `ipv6` feature).
+    Ipv6(String),
     /// A host address **with a netmask** (`10.0.0.1/24`), kept as its
     /// validated text — PostgreSQL `inet` semantics, host bits below the
     /// mask may be set (table `inet` type, `inet` feature; a bare `inet`
@@ -150,19 +153,31 @@ impl Value {
         }
     }
 
-    /// The text of a string — or of a datetime/date/time value, which
-    /// keep their text form.
+    /// The text of a string — or of any typed value (datetime, IP, MAC,
+    /// uuid, …), which all keep their text form.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Value::String(s)
             | Value::DateTime(s)
             | Value::Date(s)
             | Value::Time(s)
+            | Value::Ipv4(s)
+            | Value::Ipv6(s)
             | Value::Inet(s)
             | Value::Cidr(s)
             | Value::MacAddr(s)
             | Value::MacAddr8(s)
             | Value::Uuid(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// The address of an [`Ipv4`](Value::Ipv4) or [`Ipv6`](Value::Ipv6)
+    /// value; `None` for anything else, a string that looks like one
+    /// included.
+    pub fn as_ip(&self) -> Option<std::net::IpAddr> {
+        match self {
+            Value::Ipv4(s) | Value::Ipv6(s) => s.parse().ok(),
             _ => None,
         }
     }
@@ -304,6 +319,21 @@ impl<'de> serde::Deserialize<'de> for Value {
                 Ok(Value::String(v))
             }
 
+            fn visit_newtype_struct<D>(
+                self,
+                deserializer: D,
+            ) -> std::result::Result<Value, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                // c4's own deserializer parked the value here (see
+                // `PASS_THROUGH`); any other one is an ordinary newtype
+                match PASS_THROUGH.with(|slot| slot.take()) {
+                    Some(value) => Ok(value),
+                    None => deserializer.deserialize_any(ValueVisitor),
+                }
+            }
+
             fn visit_unit<E>(self) -> std::result::Result<Value, E> {
                 Ok(Value::Null)
             }
@@ -342,8 +372,18 @@ impl<'de> serde::Deserialize<'de> for Value {
             }
         }
 
-        deserializer.deserialize_any(ValueVisitor)
+        deserializer.deserialize_newtype_struct(PASS_THROUGH_NAME, ValueVisitor)
     }
+}
+
+/// The newtype name `Value::deserialize` asks for. c4's `ValueDeserializer`
+/// answers it by parking its owned value in [`PASS_THROUGH`] — no serde
+/// round trip, which would flatten typed variants into strings.
+pub(crate) const PASS_THROUGH_NAME: &str = "$c4::private::Value";
+
+thread_local! {
+    pub(crate) static PASS_THROUGH: std::cell::Cell<Option<Value>> =
+        const { std::cell::Cell::new(None) };
 }
 
 impl serde::Serialize for Value {
@@ -380,8 +420,7 @@ impl serde::Serialize for Value {
             | Value::MacAddr(s)
             | Value::MacAddr8(s)
             | Value::Uuid(s) => serializer.serialize_str(s),
-            Value::Ipv4(ip) => serializer.collect_str(ip),
-            Value::Ipv6(ip) => serializer.collect_str(ip),
+            Value::Ipv4(ip) | Value::Ipv6(ip) => serializer.serialize_str(ip),
             Value::Array(items) => serializer.collect_seq(items),
             Value::Object(map) => serializer.collect_map(map),
         }

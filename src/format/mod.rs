@@ -260,15 +260,23 @@ pub(crate) fn insert_key(
     value: Value,
     dot_key: bool,
 ) -> std::result::Result<(), String> {
-    if dot_key {
-        insert_segments(root, key, key.split('.'), value)
-    } else {
-        deep_merge(
-            root,
-            Value::Object(std::collections::BTreeMap::from([(key.to_owned(), value)])),
-        );
-        Ok(())
+    // a key with no `.` and no `[` means the same either way
+    if dot_key && key.contains(['.', '[']) {
+        return insert_segments(root, key, key.split('.'), value);
     }
+    if !matches!(root, Value::Object(_)) {
+        *root = Value::Object(Default::default());
+    }
+    let Value::Object(entries) = root else {
+        unreachable!()
+    };
+    match entries.get_mut(key) {
+        Some(slot) => deep_merge(slot, value),
+        None => {
+            entries.insert(key.to_owned(), value);
+        }
+    }
+    Ok(())
 }
 
 /// Every skipped slot of a `name[<int>]` index is allocated, so one

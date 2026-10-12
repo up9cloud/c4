@@ -43,7 +43,14 @@ pub fn loader(sources: Vec<c4::Source>) -> c4::Loader {
 /// Assert a loader's whole trace — merged tree and warnings — against
 /// the case's `expect.debug.log`, in the CLI's `--trace -f debug` form.
 pub fn assert_trace(case: &str, loader: &c4::Loader) {
-    let actual = format!("{:#?}\n", loader.trace().unwrap());
+    let trace = loader.trace().unwrap();
+    // load() merges into a plain value on its own path; it must agree
+    assert_eq!(
+        c4::Value::from(trace.value.clone()),
+        loader.load::<c4::Value>().unwrap(),
+        "load() and trace() disagree for case {case}"
+    );
+    let actual = format!("{trace:#?}\n");
     let path = format!("tests/fixtures/{case}/expect.debug.log");
     let expected = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
     assert_eq!(actual, expected, "trace mismatch for case {case}");
