@@ -311,15 +311,15 @@ fn convert(raw: &str, declared: &str, path: &Path, row: usize, options: &Options
         #[cfg(feature = "datetime")]
         "dt" => valid::datetime(raw)
             .then(|| Value::DateTime(raw.to_owned()))
-            .ok_or_else(&bad),
+            .ok_or_else(bad),
         #[cfg(feature = "date")]
         "date" => valid::date(raw)
             .then(|| Value::Date(raw.to_owned()))
-            .ok_or_else(&bad),
+            .ok_or_else(bad),
         #[cfg(feature = "time")]
         "time" => valid::time(raw)
             .then(|| Value::Time(raw.to_owned()))
-            .ok_or_else(&bad),
+            .ok_or_else(bad),
         #[cfg(feature = "ipv4")]
         "ipv4" => raw
             .parse::<std::net::Ipv4Addr>()
@@ -337,24 +337,24 @@ fn convert(raw: &str, declared: &str, path: &Path, row: usize, options: &Options
             Ok(ip) => Ok(ip_value(ip)),
             Err(_) => valid::inet(raw)
                 .then(|| Value::Inet(raw.to_owned()))
-                .ok_or_else(&bad),
+                .ok_or_else(bad),
         },
         #[cfg(feature = "cidr")]
         "cidr" => valid::cidr(raw)
             .then(|| Value::Cidr(raw.to_owned()))
-            .ok_or_else(&bad),
+            .ok_or_else(bad),
         #[cfg(feature = "macaddr")]
         "macaddr" => valid::macaddr(raw)
             .then(|| Value::MacAddr(raw.to_owned()))
-            .ok_or_else(&bad),
+            .ok_or_else(bad),
         #[cfg(feature = "macaddr8")]
         "macaddr8" => valid::macaddr8(raw)
             .then(|| Value::MacAddr8(raw.to_owned()))
-            .ok_or_else(&bad),
+            .ok_or_else(bad),
         #[cfg(feature = "uuid")]
         "uuid" => valid::uuid(raw)
             .then(|| Value::Uuid(raw.to_owned()))
-            .ok_or_else(&bad),
+            .ok_or_else(bad),
         // json/jsonc cells hold a whole document (array, object, null,
         // …); cell format ids mirror the file formats one-to-one — each
         // id uses exactly its own format's parser and feature
