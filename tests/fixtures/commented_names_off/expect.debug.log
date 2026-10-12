@@ -1,0 +1,63 @@
+Trace {
+    value: Object(
+        {
+            "draft": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/commented_names_off/config/_draft.json",
+                ),
+            },
+            "hidden": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/commented_names_off/config/.hidden.json",
+                ),
+            },
+            "old": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/commented_names_off/config/#old.json",
+                ),
+            },
+            "port": Leaf {
+                value: Int(
+                    8080,
+                ),
+                source: File(
+                    "tests/fixtures/commented_names_off/config/app.json",
+                ),
+            },
+            "sub": Leaf {
+                value: Int(
+                    1,
+                ),
+                source: File(
+                    "tests/fixtures/commented_names_off/config/sub/b.json",
+                ),
+            },
+            "tmp": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/commented_names_off/config/#tmp/d.json",
+                ),
+            },
+            "wip": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/commented_names_off/config/_wip/c.json",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

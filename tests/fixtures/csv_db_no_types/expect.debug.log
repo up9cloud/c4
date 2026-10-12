@@ -1,0 +1,32 @@
+Trace {
+    value: Leaf {
+        value: Array(
+            [
+                Object(
+                    {
+                        "hp": Int(
+                            10,
+                        ),
+                        "name": String(
+                            "slime",
+                        ),
+                    },
+                ),
+                Object(
+                    {
+                        "hp": Int(
+                            12,
+                        ),
+                        "name": String(
+                            "bat",
+                        ),
+                    },
+                ),
+            ],
+        ),
+        source: File(
+            "tests/fixtures/csv_db_no_types/config/data.csv",
+        ),
+    },
+    warnings: [],
+}

@@ -1,0 +1,47 @@
+Trace {
+    value: Object(
+        {
+            "a": Leaf {
+                value: Int(
+                    123,
+                ),
+                source: File(
+                    "tests/fixtures/csv_auto/config/data.csv",
+                ),
+            },
+            "debug": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/csv_auto/config/data.csv",
+                ),
+            },
+            "name": Leaf {
+                value: String(
+                    "hello",
+                ),
+                source: File(
+                    "tests/fixtures/csv_auto/config/data.csv",
+                ),
+            },
+            "pi": Leaf {
+                value: Float(
+                    3.5,
+                ),
+                source: File(
+                    "tests/fixtures/csv_auto/config/data.csv",
+                ),
+            },
+            "zip": Leaf {
+                value: String(
+                    "00123",
+                ),
+                source: File(
+                    "tests/fixtures/csv_auto/config/data.csv",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

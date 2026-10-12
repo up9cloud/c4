@@ -1,0 +1,19 @@
+Trace {
+    value: Leaf {
+        value: Array(
+            [
+                Object(
+                    {
+                        "p": Int(
+                            2,
+                        ),
+                    },
+                ),
+            ],
+        ),
+        source: File(
+            "tests/fixtures/excel_dot_sheet/config/app.xlsx",
+        ),
+    },
+    warnings: [],
+}

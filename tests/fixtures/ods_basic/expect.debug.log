@@ -1,0 +1,22 @@
+Trace {
+    value: Leaf {
+        value: Array(
+            [
+                Object(
+                    {
+                        "name": String(
+                            "c4",
+                        ),
+                        "port": Uint(
+                            8080,
+                        ),
+                    },
+                ),
+            ],
+        ),
+        source: File(
+            "tests/fixtures/ods_basic/config/app.ods",
+        ),
+    },
+    warnings: [],
+}

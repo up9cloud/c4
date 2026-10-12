@@ -1,0 +1,31 @@
+Trace {
+    value: Object(
+        {
+            "a": Leaf {
+                value: Int(
+                    2,
+                ),
+                source: File(
+                    "tests/fixtures/precedence/config/app.yml",
+                ),
+            },
+            "only_json": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/precedence/config/app.json",
+                ),
+            },
+            "only_yaml": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/precedence/config/app.yml",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

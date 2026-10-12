@@ -1,0 +1,35 @@
+Trace {
+    value: Object(
+        {
+            "count": Leaf {
+                value: Int(
+                    3,
+                ),
+                source: File(
+                    "tests/fixtures/toml_basic/config/app.toml",
+                ),
+            },
+            "owner": Object(
+                {
+                    "name": Leaf {
+                        value: String(
+                            "up9",
+                        ),
+                        source: File(
+                            "tests/fixtures/toml_basic/config/app.toml",
+                        ),
+                    },
+                },
+            ),
+            "title": Leaf {
+                value: String(
+                    "demo",
+                ),
+                source: File(
+                    "tests/fixtures/toml_basic/config/app.toml",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

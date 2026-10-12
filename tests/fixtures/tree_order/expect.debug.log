@@ -1,0 +1,31 @@
+Trace {
+    value: Object(
+        {
+            "a": Object(
+                {
+                    "b": Leaf {
+                        value: Int(
+                            123,
+                        ),
+                        source: File(
+                            "tests/fixtures/tree_order/config/a.yml",
+                        ),
+                    },
+                    "c": Object(
+                        {
+                            "d": Leaf {
+                                value: Int(
+                                    234,
+                                ),
+                                source: File(
+                                    "tests/fixtures/tree_order/config/a.yml",
+                                ),
+                            },
+                        },
+                    ),
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

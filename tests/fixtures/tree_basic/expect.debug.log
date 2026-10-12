@@ -1,0 +1,35 @@
+Trace {
+    value: Object(
+        {
+            "a": Object(
+                {
+                    "b": Object(
+                        {
+                            "c": Leaf {
+                                value: Int(
+                                    1,
+                                ),
+                                source: File(
+                                    "tests/fixtures/tree_basic/config/a/b.json",
+                                ),
+                            },
+                        },
+                    ),
+                },
+            ),
+            "d": Object(
+                {
+                    "a": Leaf {
+                        value: Int(
+                            123,
+                        ),
+                        source: File(
+                            "tests/fixtures/tree_basic/config/d.json",
+                        ),
+                    },
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

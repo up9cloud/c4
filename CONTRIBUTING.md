@@ -37,10 +37,9 @@ behavior. README.md is the user-facing overview; keep it simple.
 ## Test layout
 
 - One fixture per scenario: `tests/fixtures/<case>/` with `config/`
-  (the input), `expect.json` (the plain merged result) and
-  `expect.debug.json` (the serialized trace: `$id`-tagged leaves with
-  value + source + format), plus `expect.warnings.json` when the case
-  expects trace warnings. Error cases have `config/` only.
+  (the input), `expect.value.json` (the plain merged result) and
+  `expect.debug.log` (the `{:#?}` debug form of the whole trace, warnings
+  included — what `c4 --trace -f debug` prints). Error cases have `config/` only.
 - Binary spreadsheet fixtures (`.xlsx`/`.ods`) are never hand-edited:
   `cargo run --manifest-path tools/gen-sheets/Cargo.toml` (a
   zero-dependency Rust tool) regenerates them all — plus the

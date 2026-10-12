@@ -1,0 +1,23 @@
+Trace {
+    value: Object(
+        {
+            "title": Leaf {
+                value: String(
+                    "clock",
+                ),
+                source: File(
+                    "tests/fixtures/toml_datetime/config/app.toml",
+                ),
+            },
+            "when": Leaf {
+                value: DateTime(
+                    "2024-01-02T03:04:05Z",
+                ),
+                source: File(
+                    "tests/fixtures/toml_datetime/config/app.toml",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

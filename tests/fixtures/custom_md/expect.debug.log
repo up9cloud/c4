@@ -1,0 +1,35 @@
+Trace {
+    value: Object(
+        {
+            "db": Object(
+                {
+                    "host": Leaf {
+                        value: String(
+                            "localhost",
+                        ),
+                        source: File(
+                            "tests/fixtures/custom_md/config/notes.md",
+                        ),
+                    },
+                },
+            ),
+            "name": Leaf {
+                value: String(
+                    "c4",
+                ),
+                source: File(
+                    "tests/fixtures/custom_md/config/notes.md",
+                ),
+            },
+            "port": Leaf {
+                value: Uint(
+                    8080,
+                ),
+                source: File(
+                    "tests/fixtures/custom_md/config/notes.md",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

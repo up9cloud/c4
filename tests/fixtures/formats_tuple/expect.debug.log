@@ -1,0 +1,33 @@
+Trace {
+    value: Object(
+        {
+            "list": Leaf {
+                value: Array(
+                    [
+                        Int(
+                            1,
+                        ),
+                        Int(
+                            2,
+                        ),
+                        Int(
+                            3,
+                        ),
+                    ],
+                ),
+                source: File(
+                    "tests/fixtures/formats_tuple/config/app.json",
+                ),
+            },
+            "num": Leaf {
+                value: Int(
+                    1,
+                ),
+                source: File(
+                    "tests/fixtures/formats_tuple/config/app.json",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

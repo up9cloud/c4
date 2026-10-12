@@ -1,0 +1,27 @@
+Trace {
+    value: Object(
+        {
+            "sub": Object(
+                {
+                    "host": Leaf {
+                        value: String(
+                            "localhost",
+                        ),
+                        source: File(
+                            "tests/fixtures/recursive_nest/config/sub/db.yml",
+                        ),
+                    },
+                },
+            ),
+            "top": Leaf {
+                value: Int(
+                    1,
+                ),
+                source: File(
+                    "tests/fixtures/recursive_nest/config/top.yml",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

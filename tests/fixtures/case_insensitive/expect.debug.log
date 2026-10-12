@@ -1,0 +1,23 @@
+Trace {
+    value: Object(
+        {
+            "key": Leaf {
+                value: Int(
+                    2,
+                ),
+                source: File(
+                    "tests/fixtures/case_insensitive/config/b.yml",
+                ),
+            },
+            "onlyupper": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/case_insensitive/config/a.json",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

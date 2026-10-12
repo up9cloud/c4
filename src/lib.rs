@@ -451,7 +451,7 @@
 //! [`Loader::trace`] returns a [`Trace`]: the merged [`TracedValue`] tree
 //! that keeps, per leaf, the source it came from and the format it parsed
 //! as, plus the [`Warning`]s for input c4 accepted but did not act on —
-//! the shape the CLI `--trace` prints and the fixtures assert. The library
+//! the shape the CLI `--trace` prints. The library
 //! never prints warnings, and [`load`] drops them.
 //!
 //! # cnf files

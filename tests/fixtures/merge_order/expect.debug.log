@@ -1,0 +1,55 @@
+Trace {
+    value: Object(
+        {
+            "arr": Leaf {
+                value: Array(
+                    [
+                        Int(
+                            9,
+                        ),
+                    ],
+                ),
+                source: File(
+                    "tests/fixtures/merge_order/config/b.json",
+                ),
+            },
+            "s": Leaf {
+                value: String(
+                    "b",
+                ),
+                source: File(
+                    "tests/fixtures/merge_order/config/b.json",
+                ),
+            },
+            "x": Object(
+                {
+                    "keep_a": Leaf {
+                        value: Bool(
+                            true,
+                        ),
+                        source: File(
+                            "tests/fixtures/merge_order/config/a.json",
+                        ),
+                    },
+                    "keep_b": Leaf {
+                        value: Bool(
+                            true,
+                        ),
+                        source: File(
+                            "tests/fixtures/merge_order/config/b.json",
+                        ),
+                    },
+                    "m": Leaf {
+                        value: Int(
+                            2,
+                        ),
+                        source: File(
+                            "tests/fixtures/merge_order/config/b.json",
+                        ),
+                    },
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

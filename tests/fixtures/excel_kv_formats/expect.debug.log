@@ -1,0 +1,23 @@
+Trace {
+    value: Object(
+        {
+            "max_players": Leaf {
+                value: Uint(
+                    8,
+                ),
+                source: File(
+                    "tests/fixtures/excel_kv_formats/config/app.xlsx",
+                ),
+            },
+            "title": Leaf {
+                value: String(
+                    "Hello",
+                ),
+                source: File(
+                    "tests/fixtures/excel_kv_formats/config/app.xlsx",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

@@ -1,0 +1,19 @@
+Trace {
+    value: Leaf {
+        value: Array(
+            [
+                Object(
+                    {
+                        "x": Int(
+                            1,
+                        ),
+                    },
+                ),
+            ],
+        ),
+        source: File(
+            "tests/fixtures/excel_hidden_config_off/config/app.xlsx",
+        ),
+    },
+    warnings: [],
+}

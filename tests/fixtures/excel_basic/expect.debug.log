@@ -1,0 +1,48 @@
+Trace {
+    value: Leaf {
+        value: Array(
+            [
+                Object(
+                    {
+                        "db": Object(
+                            {
+                                "host": String(
+                                    "localhost",
+                                ),
+                            },
+                        ),
+                        "debug": Bool(
+                            true,
+                        ),
+                        "name": String(
+                            "c4",
+                        ),
+                        "pi": Float(
+                            1.5,
+                        ),
+                        "port": Uint(
+                            8080,
+                        ),
+                    },
+                ),
+                Object(
+                    {
+                        "debug": Bool(
+                            false,
+                        ),
+                        "name": String(
+                            "c5",
+                        ),
+                        "port": Uint(
+                            9090,
+                        ),
+                    },
+                ),
+            ],
+        ),
+        source: File(
+            "tests/fixtures/excel_basic/config/app.xlsx",
+        ),
+    },
+    warnings: [],
+}

@@ -1,0 +1,53 @@
+Trace {
+    value: Object(
+        {
+            "db": Object(
+                {
+                    "host": Leaf {
+                        value: String(
+                            "localhost",
+                        ),
+                        source: File(
+                            "tests/fixtures/commented_keys/config/app.json",
+                        ),
+                    },
+                },
+            ),
+            "items": Leaf {
+                value: Array(
+                    [
+                        Object(
+                            {
+                                "id": Int(
+                                    1,
+                                ),
+                            },
+                        ),
+                        Object(
+                            {
+                                "id": Int(
+                                    2,
+                                ),
+                            },
+                        ),
+                    ],
+                ),
+                source: File(
+                    "tests/fixtures/commented_keys/config/app.json",
+                ),
+            },
+            "leftover": Object(
+                {},
+            ),
+            "port": Leaf {
+                value: Int(
+                    8080,
+                ),
+                source: File(
+                    "tests/fixtures/commented_keys/config/app.json",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

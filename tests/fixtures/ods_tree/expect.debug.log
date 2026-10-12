@@ -1,0 +1,47 @@
+Trace {
+    value: Object(
+        {
+            "a": Object(
+                {
+                    "b": Object(
+                        {
+                            "c": Leaf {
+                                value: Array(
+                                    [
+                                        Object(
+                                            {
+                                                "k1": String(
+                                                    "v1",
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                source: File(
+                                    "tests/fixtures/ods_tree/config/a/b.ods",
+                                ),
+                            },
+                            "d": Leaf {
+                                value: Array(
+                                    [
+                                        Object(
+                                            {
+                                                "k2": Int(
+                                                    2,
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                source: File(
+                                    "tests/fixtures/ods_tree/config/a/b.ods",
+                                ),
+                            },
+                        },
+                    ),
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

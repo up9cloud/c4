@@ -1,0 +1,332 @@
+Trace {
+    value: Object(
+        {
+            "CA_default": Object(
+                {
+                    "certs": Leaf {
+                        value: String(
+                            "$dir/certs",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "default_md": Leaf {
+                        value: String(
+                            "default",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "dir": Leaf {
+                        value: String(
+                            "./demoCA",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "private_key": Leaf {
+                        value: String(
+                            "$dir/private/cakey.pem",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                },
+            ),
+            "HOME": Leaf {
+                value: String(
+                    ".",
+                ),
+                source: File(
+                    "tests/fixtures/cnf_basic/config/openssl.cnf",
+                ),
+            },
+            "client": Object(
+                {
+                    "password": Leaf {
+                        value: String(
+                            "pa ss#word",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "port": Leaf {
+                        value: String(
+                            "3306",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "socket": Leaf {
+                        value: String(
+                            "/var/run/mysqld/mysqld.sock",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                },
+            ),
+            "mysqld": Object(
+                {
+                    "basedir": Leaf {
+                        value: String(
+                            "C:\\Program Files\\MySQL",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "bind-address": Leaf {
+                        value: String(
+                            "127.0.0.1",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "ft_stopword_file": Leaf {
+                        value: String(
+                            "a b\tc",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "init-connect": Leaf {
+                        value: String(
+                            "SET NAMES utf8mb4",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "log-error": Leaf {
+                        value: String(
+                            "",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "plugin-load-add": Leaf {
+                        value: String(
+                            "auth_socket.so",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "port": Leaf {
+                        value: String(
+                            "3307",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "skip-external-locking": Leaf {
+                        value: Bool(
+                            true,
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "skip-networking": Leaf {
+                        value: Bool(
+                            true,
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "sql_mode": Leaf {
+                        value: String(
+                            "STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "user": Leaf {
+                        value: String(
+                            "mysql",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                },
+            ),
+            "mysqldump": Object(
+                {
+                    "max_allowed_packet": Leaf {
+                        value: String(
+                            "16M",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                    "quick": Leaf {
+                        value: Bool(
+                            true,
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/my.cnf",
+                        ),
+                    },
+                },
+            ),
+            "openssl_conf": Leaf {
+                value: String(
+                    "openssl_init",
+                ),
+                source: File(
+                    "tests/fixtures/cnf_basic/config/openssl.cnf",
+                ),
+            },
+            "req": Object(
+                {
+                    "default_bits": Leaf {
+                        value: String(
+                            "2048",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "distinguished_name": Leaf {
+                        value: String(
+                            "req_distinguished_name",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "recipient": Leaf {
+                        value: String(
+                            "/C=FI/O=Insta Demo/CN=Insta Demo CA",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "subject": Leaf {
+                        value: String(
+                            "/CN=openssl-cmp-test",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                },
+            ),
+            "req_distinguished_name": Object(
+                {
+                    "0.organizationName": Leaf {
+                        value: String(
+                            "Organization Name (eg, company)",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "1.organizationName": Leaf {
+                        value: String(
+                            "Second Organization Name (eg, company)",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "commonName_max": Leaf {
+                        value: String(
+                            "64",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "countryName": Leaf {
+                        value: String(
+                            "Country Name (2 letter code)",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                },
+            ),
+            "v3_ca": Object(
+                {
+                    "basicConstraints": Leaf {
+                        value: String(
+                            "critical,CA:true",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "literal": Leaf {
+                        value: String(
+                            "\\$dir and a\\;b",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "oid_file": Leaf {
+                        value: String(
+                            "${ENV::HOME}/.oid",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                    "subjectAltName": Leaf {
+                        value: String(
+                            "DNS:example.com,DNS:www.example.com",
+                        ),
+                        source: File(
+                            "tests/fixtures/cnf_basic/config/openssl.cnf",
+                        ),
+                    },
+                },
+            ),
+        },
+    ),
+    warnings: [
+        Warning {
+            source: File(
+                "tests/fixtures/cnf_basic/config/my.cnf",
+            ),
+            message: "line 28: ignored directive '!includedir /etc/mysql/conf.d/' (c4 does not process directives; add included files as sources)",
+        },
+        Warning {
+            source: File(
+                "tests/fixtures/cnf_basic/config/my.cnf",
+            ),
+            message: "line 29: ignored directive '!include /etc/mysql/secret.cnf' (c4 does not process directives; add included files as sources)",
+        },
+        Warning {
+            source: File(
+                "tests/fixtures/cnf_basic/config/openssl.cnf",
+            ),
+            message: "line 4: ignored directive '.include /etc/ssl/extra.cnf' (c4 does not process directives; add included files as sources)",
+        },
+        Warning {
+            source: File(
+                "tests/fixtures/cnf_basic/config/openssl.cnf",
+            ),
+            message: "line 5: ignored directive '.pragma dollarid:true' (c4 does not process directives; add included files as sources)",
+        },
+    ],
+}

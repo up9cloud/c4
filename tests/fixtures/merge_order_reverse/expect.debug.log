@@ -1,0 +1,58 @@
+Trace {
+    value: Object(
+        {
+            "arr": Leaf {
+                value: Array(
+                    [
+                        Int(
+                            1,
+                        ),
+                        Int(
+                            2,
+                        ),
+                    ],
+                ),
+                source: File(
+                    "tests/fixtures/merge_order_reverse/config/a.json",
+                ),
+            },
+            "s": Leaf {
+                value: String(
+                    "a",
+                ),
+                source: File(
+                    "tests/fixtures/merge_order_reverse/config/a.json",
+                ),
+            },
+            "x": Object(
+                {
+                    "keep_a": Leaf {
+                        value: Bool(
+                            true,
+                        ),
+                        source: File(
+                            "tests/fixtures/merge_order_reverse/config/a.json",
+                        ),
+                    },
+                    "keep_b": Leaf {
+                        value: Bool(
+                            true,
+                        ),
+                        source: File(
+                            "tests/fixtures/merge_order_reverse/config/b.json",
+                        ),
+                    },
+                    "m": Leaf {
+                        value: Int(
+                            1,
+                        ),
+                        source: File(
+                            "tests/fixtures/merge_order_reverse/config/a.json",
+                        ),
+                    },
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

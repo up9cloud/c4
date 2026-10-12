@@ -1,0 +1,15 @@
+Trace {
+    value: Object(
+        {
+            "top": Leaf {
+                value: Int(
+                    1,
+                ),
+                source: File(
+                    "tests/fixtures/recursive_off/config/top.yml",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

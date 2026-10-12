@@ -461,7 +461,7 @@ mod csv {
     ))]
     #[test]
     fn net_string_types() {
-        // serialized form is the text, so expect.json needs no variants
+        // serialized form is the text, so expect.value.json needs no variants
         check("csv_net", base());
     }
 
@@ -1398,12 +1398,11 @@ mod ods {
 // per table source.
 #[cfg(feature = "csv")]
 mod table_layouts {
-    use crate::common::{expect, expect_debug, fx, loader};
+    use crate::common::{assert_trace, expect, fx, loader};
 
     fn check_table(case: &str, sources: Vec<c4::Source>) {
         let loader = loader(sources);
-        let traced = serde_json::to_value(loader.trace().unwrap().value).unwrap();
-        assert_eq!(traced, expect_debug(case), "trace mismatch for {case}");
+        assert_trace(case, &loader);
         let plain: serde_json::Value = loader.load().unwrap();
         assert_eq!(plain, expect(case), "load mismatch for {case}");
     }
@@ -1516,7 +1515,7 @@ mod table_layouts {
 // under the sheet name (spec: CLAUDE.md "Spreadsheet formats").
 #[cfg(feature = "excel")]
 mod excel_sheet_sources {
-    use crate::common::{expect, expect_debug, fx, loader};
+    use crate::common::{assert_trace, expect, fx, loader};
 
     #[test]
     fn each_sheet_gets_its_own_layout() {
@@ -1545,10 +1544,7 @@ mod excel_sheet_sources {
             // naming a sheet bypasses the prefix/hidden filters
             (c4::Format::Excel, path, "_extra", "kv").into(),
         ]);
-        assert_eq!(
-            serde_json::to_value(loader.trace().unwrap().value).unwrap(),
-            expect_debug("excel_sheets")
-        );
+        assert_trace("excel_sheets", &loader);
         let plain: serde_json::Value = loader.load().unwrap();
         assert_eq!(plain, expect("excel_sheets"));
     }

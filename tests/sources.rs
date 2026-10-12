@@ -8,7 +8,7 @@ mod common;
 use std::path::Path;
 
 #[allow(unused_imports)] // unused in single-format builds
-use common::{expect, expect_debug, fx, loader};
+use common::{assert_trace, expect, fx, loader};
 #[allow(unused_imports)] // unused in single-format builds
 use serde_json::{Value as Json, json};
 
@@ -46,8 +46,7 @@ fn later_sources_override_earlier() {
         fx("multi_sources/local.json").into(),
     ]);
 
-    let traced_json = serde_json::to_value(loader.trace().unwrap().value).unwrap();
-    assert_eq!(traced_json, expect_debug("multi_sources"));
+    assert_trace("multi_sources", &loader);
     let plain: Json = loader.load().unwrap();
     assert_eq!(plain, expect("multi_sources"));
 }

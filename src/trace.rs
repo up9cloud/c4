@@ -30,8 +30,7 @@ pub enum SourceRef {
 ///
 /// Serializes to JSON as
 /// `{ "$id": "Leaf", "value": …, "source": …, "format": … }` leaves —
-/// the shape used by the CLI `--trace` output and the test fixtures'
-/// expect.json. `$id` tags the node kind (an object node is a plain
+/// the shape used by the CLI `--trace` json output. `$id` tags the node kind (an object node is a plain
 /// map), `source` is the file path (`SourceRef::String(i)` prints as
 /// `"string:<i>"`), `format` is the value's [`Value::format_id`].
 #[derive(Debug, Clone, PartialEq)]

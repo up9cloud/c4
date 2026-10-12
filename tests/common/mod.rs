@@ -1,9 +1,7 @@
 //! Shared helpers: every regular case folder is `config/` plus two
-//! expectation files — `expect.json` (the plain merged result, what
-//! `load()` returns) and `expect.debug.json` (the serialized trace:
-//! `$id`-tagged leaves with value + source + format, what `trace()`
-//! serializes to) — plus an optional `expect.warnings.json` (the trace's
-//! warnings; absent means none are allowed).
+//! expectation files — `expect.value.json` (the plain merged result, what
+//! `load()` returns) and `expect.debug.log` (the `{:#?}` form of the whole
+//! `Trace`, warnings included — what `c4 --trace -f debug` prints).
 
 #![allow(dead_code)] // each test binary uses a subset of these helpers
 
@@ -18,14 +16,9 @@ fn read(path: String) -> Json {
     serde_json::from_str(&raw).unwrap_or_else(|e| panic!("{path}: {e}"))
 }
 
-/// The plain merged expectation of a case (expect.json).
+/// The plain merged expectation of a case (expect.value.json).
 pub fn expect(case: &str) -> Json {
-    read(format!("tests/fixtures/{case}/expect.json"))
-}
-
-/// The traced expectation of a case (expect.debug.json).
-pub fn expect_debug(case: &str) -> Json {
-    read(format!("tests/fixtures/{case}/expect.debug.json"))
+    read(format!("tests/fixtures/{case}/expect.value.json"))
 }
 
 /// An explicitly **flat** baseline, independent of the `tree` feature
@@ -47,31 +40,21 @@ pub fn loader(sources: Vec<c4::Source>) -> c4::Loader {
     c4::Loader::new(c4::Options { sources, ..base() })
 }
 
+/// Assert a loader's whole trace — merged tree and warnings — against
+/// the case's `expect.debug.log`, in the CLI's `--trace -f debug` form.
+pub fn assert_trace(case: &str, loader: &c4::Loader) {
+    let actual = format!("{:#?}\n", loader.trace().unwrap());
+    let path = format!("tests/fixtures/{case}/expect.debug.log");
+    let expected = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    assert_eq!(actual, expected, "trace mismatch for case {case}");
+}
+
 /// Assert both the traced and the plain load of a case's `config/`
 /// folder against its two expectation files.
 pub fn check(case: &str, mut options: c4::Options) {
     options.sources = vec![format!("tests/fixtures/{case}/config").into()];
     let loader = c4::Loader::new(options);
-
-    let trace = loader.trace().unwrap();
-    let traced_json = serde_json::to_value(&trace.value).unwrap();
-    assert_eq!(
-        traced_json,
-        expect_debug(case),
-        "traced output mismatch for case {case}"
-    );
-    let warnings_path = format!("tests/fixtures/{case}/expect.warnings.json");
-    let expected_warnings = if std::path::Path::new(&warnings_path).exists() {
-        read(warnings_path)
-    } else {
-        Json::Array(Vec::new())
-    };
-    assert_eq!(
-        serde_json::to_value(&trace.warnings).unwrap(),
-        expected_warnings,
-        "warnings mismatch for case {case}"
-    );
-
+    assert_trace(case, &loader);
     let plain: Json = loader.load().unwrap();
     assert_eq!(plain, expect(case), "plain output mismatch for case {case}");
 }

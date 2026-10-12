@@ -1,0 +1,71 @@
+Trace {
+    value: Object(
+        {
+            "host": Leaf {
+                value: Ipv4(
+                    10.0.0.1,
+                ),
+                source: File(
+                    "tests/fixtures/csv_net/config/data.csv",
+                ),
+            },
+            "host6": Leaf {
+                value: Ipv6(
+                    ::1,
+                ),
+                source: File(
+                    "tests/fixtures/csv_net/config/data.csv",
+                ),
+            },
+            "id": Leaf {
+                value: Uuid(
+                    "550e8400-e29b-41d4-a716-446655440000",
+                ),
+                source: File(
+                    "tests/fixtures/csv_net/config/data.csv",
+                ),
+            },
+            "mac": Leaf {
+                value: MacAddr(
+                    "aa:bb:cc:dd:ee:ff",
+                ),
+                source: File(
+                    "tests/fixtures/csv_net/config/data.csv",
+                ),
+            },
+            "mac8": Leaf {
+                value: MacAddr8(
+                    "aa:bb:cc:dd:ee:ff:00:11",
+                ),
+                source: File(
+                    "tests/fixtures/csv_net/config/data.csv",
+                ),
+            },
+            "masked": Leaf {
+                value: Inet(
+                    "10.0.0.1/24",
+                ),
+                source: File(
+                    "tests/fixtures/csv_net/config/data.csv",
+                ),
+            },
+            "net": Leaf {
+                value: Cidr(
+                    "10.0.0.0/8",
+                ),
+                source: File(
+                    "tests/fixtures/csv_net/config/data.csv",
+                ),
+            },
+            "net6": Leaf {
+                value: Cidr(
+                    "2001:db8::/32",
+                ),
+                source: File(
+                    "tests/fixtures/csv_net/config/data.csv",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

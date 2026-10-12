@@ -1,0 +1,99 @@
+Trace {
+    value: Object(
+        {
+            "a": Object(
+                {
+                    "b": Object(
+                        {
+                            "#x": Leaf {
+                                value: Array(
+                                    [
+                                        Object(
+                                            {
+                                                "p": Int(
+                                                    1,
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                source: File(
+                                    "tests/fixtures/excel_tree_prefix_off/config/a/b.xlsx",
+                                ),
+                            },
+                            "_z": Leaf {
+                                value: Array(
+                                    [
+                                        Object(
+                                            {
+                                                "p": Int(
+                                                    3,
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                source: File(
+                                    "tests/fixtures/excel_tree_prefix_off/config/a/b.xlsx",
+                                ),
+                            },
+                            "c": Leaf {
+                                value: Array(
+                                    [
+                                        Object(
+                                            {
+                                                "k1": String(
+                                                    "v1",
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                source: File(
+                                    "tests/fixtures/excel_tree_prefix_off/config/a/b.xlsx",
+                                ),
+                            },
+                            "d": Leaf {
+                                value: Array(
+                                    [
+                                        Object(
+                                            {
+                                                "k2": Int(
+                                                    2,
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                source: File(
+                                    "tests/fixtures/excel_tree_prefix_off/config/a/b.xlsx",
+                                ),
+                            },
+                            "e": Object(
+                                {
+                                    "f": Leaf {
+                                        value: Array(
+                                            [
+                                                Object(
+                                                    {
+                                                        "k3": Int(
+                                                            5,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        ),
+                                        source: File(
+                                            "tests/fixtures/excel_tree_prefix_off/config/a/b.xlsx",
+                                        ),
+                                    },
+                                },
+                            ),
+                        },
+                    ),
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

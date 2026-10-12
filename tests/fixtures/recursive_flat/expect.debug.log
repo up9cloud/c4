@@ -1,0 +1,23 @@
+Trace {
+    value: Object(
+        {
+            "host": Leaf {
+                value: String(
+                    "localhost",
+                ),
+                source: File(
+                    "tests/fixtures/recursive_flat/config/sub/db.yml",
+                ),
+            },
+            "top": Leaf {
+                value: Int(
+                    1,
+                ),
+                source: File(
+                    "tests/fixtures/recursive_flat/config/top.yml",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

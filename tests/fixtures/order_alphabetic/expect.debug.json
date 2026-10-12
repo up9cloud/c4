@@ -1,8 +1,0 @@
-{
-  "who": {
-    "$id": "Leaf",
-    "value": "folder",
-    "source": "tests/fixtures/order_alphabetic/config/z_sub/inner.yml",
-    "format": "str"
-  }
-}

@@ -1,0 +1,27 @@
+Trace {
+    value: Object(
+        {
+            "db": Object(
+                {
+                    "host": Leaf {
+                        value: String(
+                            "localhost",
+                        ),
+                        source: File(
+                            "tests/fixtures/csv_dot_key/config/data.csv",
+                        ),
+                    },
+                    "port": Leaf {
+                        value: Uint(
+                            5432,
+                        ),
+                        source: File(
+                            "tests/fixtures/csv_dot_key/config/data.csv",
+                        ),
+                    },
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

@@ -1,0 +1,19 @@
+Trace {
+    value: Object(
+        {
+            "keep": Object(
+                {
+                    "k": Leaf {
+                        value: Bool(
+                            true,
+                        ),
+                        source: File(
+                            "tests/fixtures/tree_unknown/config/keep.json",
+                        ),
+                    },
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

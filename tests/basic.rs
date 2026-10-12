@@ -96,8 +96,8 @@ fn deserialize_into_struct() {
 #[cfg(all(any(feature = "json", feature = "jsonc"), feature = "yaml"))]
 #[test]
 fn trace_returns_typed_tree() {
-    // trace() is a real type, not JSON with magic keys — expect.json is
-    // only its serialized form
+    // trace() is a real type, not JSON with magic keys — the `$id` JSON
+    // is only its serialized form
     use c4::{SourceRef, TracedValue, Value};
 
     let traced = loader(vec![fx("simple/config").into()])

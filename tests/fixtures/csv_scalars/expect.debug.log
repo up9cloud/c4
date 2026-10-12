@@ -1,0 +1,95 @@
+Trace {
+    value: Object(
+        {
+            "a": Leaf {
+                value: Int(
+                    123,
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "big": Leaf {
+                value: Int(
+                    9999999999,
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "count": Leaf {
+                value: Int(
+                    42,
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "debug": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "flag": Leaf {
+                value: Bool(
+                    false,
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "guess": Leaf {
+                value: Int(
+                    99,
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "label": Leaf {
+                value: String(
+                    "hi",
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "name": Leaf {
+                value: String(
+                    "hello",
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "pi": Leaf {
+                value: Float(
+                    3.5,
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "plain": Leaf {
+                value: Int(
+                    7,
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+            "ratio": Leaf {
+                value: Float(
+                    0.5,
+                ),
+                source: File(
+                    "tests/fixtures/csv_scalars/config/data.csv",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

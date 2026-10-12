@@ -1,0 +1,47 @@
+Trace {
+    value: Object(
+        {
+            "d": Leaf {
+                value: Date(
+                    "2024-01-02",
+                ),
+                source: File(
+                    "tests/fixtures/csv_date_time_ip/config/data.csv",
+                ),
+            },
+            "frac": Leaf {
+                value: Time(
+                    "03:04:05.5",
+                ),
+                source: File(
+                    "tests/fixtures/csv_date_time_ip/config/data.csv",
+                ),
+            },
+            "ip4": Leaf {
+                value: Ipv4(
+                    10.0.0.1,
+                ),
+                source: File(
+                    "tests/fixtures/csv_date_time_ip/config/data.csv",
+                ),
+            },
+            "ip6": Leaf {
+                value: Ipv6(
+                    ::1,
+                ),
+                source: File(
+                    "tests/fixtures/csv_date_time_ip/config/data.csv",
+                ),
+            },
+            "t": Leaf {
+                value: Time(
+                    "03:04:05",
+                ),
+                source: File(
+                    "tests/fixtures/csv_date_time_ip/config/data.csv",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

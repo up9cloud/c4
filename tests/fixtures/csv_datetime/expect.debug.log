@@ -1,0 +1,31 @@
+Trace {
+    value: Object(
+        {
+            "born": Leaf {
+                value: DateTime(
+                    "2024-01-02T03:04:05Z",
+                ),
+                source: File(
+                    "tests/fixtures/csv_datetime/config/data.csv",
+                ),
+            },
+            "day": Leaf {
+                value: DateTime(
+                    "2024-01-02",
+                ),
+                source: File(
+                    "tests/fixtures/csv_datetime/config/data.csv",
+                ),
+            },
+            "precise": Leaf {
+                value: DateTime(
+                    "2024-01-02 03:04:05.123+08:00",
+                ),
+                source: File(
+                    "tests/fixtures/csv_datetime/config/data.csv",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

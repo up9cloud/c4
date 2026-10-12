@@ -1,0 +1,31 @@
+Trace {
+    value: Object(
+        {
+            "APP_NAME": Leaf {
+                value: String(
+                    "c4",
+                ),
+                source: File(
+                    "tests/fixtures/env_basic/config/.env",
+                ),
+            },
+            "PORT": Leaf {
+                value: String(
+                    "8080",
+                ),
+                source: File(
+                    "tests/fixtures/env_basic/config/.env",
+                ),
+            },
+            "QUOTED": Leaf {
+                value: String(
+                    "hello world",
+                ),
+                source: File(
+                    "tests/fixtures/env_basic/config/.env",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

@@ -1,0 +1,19 @@
+Trace {
+    value: Object(
+        {
+            "a": Object(
+                {
+                    "blabla": Leaf {
+                        value: Ipv4(
+                            1.1.1.1,
+                        ),
+                        source: File(
+                            "tests/fixtures/tree_auto/config/a/blabla",
+                        ),
+                    },
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

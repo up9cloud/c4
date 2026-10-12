@@ -1,0 +1,32 @@
+Trace {
+    value: Leaf {
+        value: Array(
+            [
+                Object(
+                    {
+                        "exp": Int(
+                            0,
+                        ),
+                        "lv": Int(
+                            0,
+                        ),
+                    },
+                ),
+                Object(
+                    {
+                        "exp": Int(
+                            5,
+                        ),
+                        "lv": Int(
+                            1,
+                        ),
+                    },
+                ),
+            ],
+        ),
+        source: File(
+            "tests/fixtures/csv_db_blank_types/config/data.csv",
+        ),
+    },
+    warnings: [],
+}

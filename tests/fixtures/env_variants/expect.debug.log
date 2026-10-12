@@ -1,0 +1,31 @@
+Trace {
+    value: Object(
+        {
+            "BASE": Leaf {
+                value: String(
+                    "from_dotenv",
+                ),
+                source: File(
+                    "tests/fixtures/env_variants/config/.env",
+                ),
+            },
+            "LOCAL": Leaf {
+                value: String(
+                    "yes",
+                ),
+                source: File(
+                    "tests/fixtures/env_variants/config/local.env",
+                ),
+            },
+            "PORT": Leaf {
+                value: String(
+                    "2",
+                ),
+                source: File(
+                    "tests/fixtures/env_variants/config/local.env",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

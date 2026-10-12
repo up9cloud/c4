@@ -1,0 +1,67 @@
+Trace {
+    value: Object(
+        {
+            "a": Object(
+                {
+                    "b": Object(
+                        {
+                            "c": Leaf {
+                                value: Array(
+                                    [
+                                        Object(
+                                            {
+                                                "k1": String(
+                                                    "v1",
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                source: File(
+                                    "tests/fixtures/excel_tree/config/a/b.xlsx",
+                                ),
+                            },
+                            "d": Leaf {
+                                value: Array(
+                                    [
+                                        Object(
+                                            {
+                                                "k2": Int(
+                                                    2,
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                source: File(
+                                    "tests/fixtures/excel_tree/config/a/b.xlsx",
+                                ),
+                            },
+                            "e": Object(
+                                {
+                                    "f": Leaf {
+                                        value: Array(
+                                            [
+                                                Object(
+                                                    {
+                                                        "k3": Int(
+                                                            5,
+                                                        ),
+                                                    },
+                                                ),
+                                            ],
+                                        ),
+                                        source: File(
+                                            "tests/fixtures/excel_tree/config/a/b.xlsx",
+                                        ),
+                                    },
+                                },
+                            ),
+                        },
+                    ),
+                },
+            ),
+        },
+    ),
+    warnings: [],
+}

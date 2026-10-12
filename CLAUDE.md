@@ -218,7 +218,7 @@ tests second, implementation third.
   "warnings": […]}`, always both keys. `TracedValue` (Object nodes /
   `Leaf { value, source: SourceRef }`) serializes to
   `{"$id": "Leaf", value, source, format}` JSON — used by CLI `--trace`
-  and the fixtures. `$id` tags the node kind so leaves are unambiguous
+  json output. (The fixtures assert the `{:#?}` debug form instead.) `$id` tags the node kind so leaves are unambiguous
   (a config object could itself have value/source/format keys). `format`
   is `Value::format_id()`, derived from the stored value — an `i8` cell
   reports `i64`, `inet` reports `ipv4`/`ipv6` for bare addresses — not
@@ -797,9 +797,9 @@ DateTime / Date / Time / Ipv4(`Ipv4Addr`) / Ipv6(`Ipv6Addr`) / Inet /
 Cidr / MacAddr / MacAddr8 / Uuid / Array / Object(`BTreeMap`) — in
 `src/value.rs` with the serde bridges. Textual variants keep their
 validated input text; everything serializes as (canonical) strings, so
-fixtures stay valid whether or not parser features are on — but
-`format_id` differs, so fixture checks whose formats depend on a
-feature are gated on it. A serialize→deserialize round trip through a
+`expect.value.json` stays valid whether or not parser features are on — but
+the variant (and `format_id`) differs, so fixture checks whose
+`expect.debug.log` holds a feature-dependent variant are gated on it. A serialize→deserialize round trip through a
 format without the corresponding type yields plain strings/numbers.
 128-bit ints narrow to `i64`/`u64` on serialize when they fit (so
 `load` and small-value traces show a JSON number); a value past `u64`
@@ -852,16 +852,19 @@ tree). Errors → stderr, exit 1.
 ## Test layout
 
 One fixture folder per scenario under `tests/fixtures/<case>/`:
-`config/` (the folder the test loads) + `expect.json` (the plain merged
-result) + `expect.debug.json` (serialized trace:
-`$id`/value/source/format leaves). Option variants get their own
+`config/` (the folder the test loads) + `expect.value.json` (the plain merged
+result) + `expect.debug.log` (the `{:#?}` debug form of the whole
+`Trace` — tree and warnings — exactly what `c4 --trace -f debug`
+prints; owner, 2026-10-12, replacing `expect.debug.json` and
+`expect.warnings.json`). Option variants get their own
 case folder with copied config files — never share one config between
 variant expectations. Error cases (`csv_bad`) have `config/` only.
 `multi_sources/` is the one non-standard case. Shared helpers in
-`tests/common/mod.rs`: `check(case, options)` asserts
-`serde_json::to_value(trace().value)` against expect.debug.json,
-`trace().warnings` against the optional `expect.warnings.json`
-(absent = no warnings allowed), and `load()` against expect.json; `base()` is an explicit **flat** `Options` baseline
+`tests/common/mod.rs`: `assert_trace(case, &loader)` compares
+`format!("{:#?}\n", trace())` byte-for-byte with expect.debug.log (also
+used directly by the non-folder cases: multi_sources, table layouts,
+excel_sheets); `check(case, options)` runs it on the case's `config/`
+and asserts `load()` against expect.value.json; `base()` is an explicit **flat** `Options` baseline
 (keying off, `dir_depth: 1`) that fixture cases build on instead of
 `Options::default()`, so their expectations hold even under
 `--all-features` (where the `tree` feature flips the default keying on).
@@ -920,8 +923,8 @@ implies `ipv4`+`ipv6`+`cidr`, so "without ipv4" gates need
   auto-guess + unknown-type + bad-value row assertions, PostgreSQL
   mac/inet/cidr forms), strict json, ext_override, formats_tuple,
   custom_md, toml/ini/env basics, cnf (`cnf_basic` fixture — a
-  my.cnf + an openssl.cnf excerpt, with `expect.warnings.json` for the
-  skipped directives — plus `parse`-level rule tests via string
+  my.cnf + an openssl.cnf excerpt; its expect.debug.log lists the
+  skipped directives' warnings — plus `parse`-level rule tests via string
   sources), toml datetime following the `datetime`
   feature — each behind its format's `#[cfg(feature)]`. Spreadsheet
   cases (all sheet content is db-shaped, the spreadsheet default

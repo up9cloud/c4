@@ -1,0 +1,40 @@
+Trace {
+    value: Object(
+        {
+            "meta": Object(
+                {
+                    "x": Leaf {
+                        value: Int(
+                            1,
+                        ),
+                        source: File(
+                            "tests/fixtures/csv_extended/config/data.csv",
+                        ),
+                    },
+                },
+            ),
+            "nothing": Leaf {
+                value: Null,
+                source: File(
+                    "tests/fixtures/csv_extended/config/data.csv",
+                ),
+            },
+            "ports": Leaf {
+                value: Array(
+                    [
+                        Int(
+                            80,
+                        ),
+                        Int(
+                            443,
+                        ),
+                    ],
+                ),
+                source: File(
+                    "tests/fixtures/csv_extended/config/data.csv",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

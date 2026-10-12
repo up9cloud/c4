@@ -1,0 +1,39 @@
+Trace {
+    value: Object(
+        {
+            "base_only": Leaf {
+                value: Int(
+                    1,
+                ),
+                source: File(
+                    "tests/fixtures/multi_sources/base/a.yml",
+                ),
+            },
+            "local_only": Leaf {
+                value: Bool(
+                    true,
+                ),
+                source: File(
+                    "tests/fixtures/multi_sources/local.json",
+                ),
+            },
+            "override_only": Leaf {
+                value: Int(
+                    2,
+                ),
+                source: File(
+                    "tests/fixtures/multi_sources/override/a.yml",
+                ),
+            },
+            "shared": Leaf {
+                value: String(
+                    "local",
+                ),
+                source: File(
+                    "tests/fixtures/multi_sources/local.json",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

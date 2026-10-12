@@ -22,5 +22,5 @@ cd examples/00_simple && cargo run
 
 Beyond that, every behavior has a fixture under
 [`tests/fixtures/`](../tests/fixtures/): `config/` is the input,
-`expect.json` the merged result, and `expect.debug.json` the traced form —
+`expect.value.json` the merged result, and `expect.debug.log` the traced form —
 if something is not covered here, there is a fixture showing it.

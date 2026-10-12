@@ -1,0 +1,123 @@
+Trace {
+    value: Object(
+        {
+            "_extra": Object(
+                {
+                    "note": Leaf {
+                        value: String(
+                            "hi",
+                        ),
+                        source: File(
+                            "tests/fixtures/excel_sheets/config/game.xlsx",
+                        ),
+                    },
+                },
+            ),
+            "config": Object(
+                {
+                    "max_players": Leaf {
+                        value: Uint(
+                            8,
+                        ),
+                        source: File(
+                            "tests/fixtures/excel_sheets/config/game.xlsx",
+                        ),
+                    },
+                    "title": Leaf {
+                        value: String(
+                            "Hello",
+                        ),
+                        source: File(
+                            "tests/fixtures/excel_sheets/config/game.xlsx",
+                        ),
+                    },
+                },
+            ),
+            "items": Leaf {
+                value: Array(
+                    [
+                        Object(
+                            {
+                                "id": Uint(
+                                    1,
+                                ),
+                                "name": String(
+                                    "sword",
+                                ),
+                                "price": Float(
+                                    10.5,
+                                ),
+                            },
+                        ),
+                        Object(
+                            {
+                                "id": Uint(
+                                    2,
+                                ),
+                                "name": String(
+                                    "shield",
+                                ),
+                                "price": Float(
+                                    7.0,
+                                ),
+                            },
+                        ),
+                    ],
+                ),
+                source: File(
+                    "tests/fixtures/excel_sheets/config/game.xlsx",
+                ),
+            },
+            "meta": Object(
+                {
+                    "author": Leaf {
+                        value: String(
+                            "up9cloud",
+                        ),
+                        source: File(
+                            "tests/fixtures/excel_sheets/config/game.xlsx",
+                        ),
+                    },
+                    "version": Leaf {
+                        value: Int(
+                            2,
+                        ),
+                        source: File(
+                            "tests/fixtures/excel_sheets/config/game.xlsx",
+                        ),
+                    },
+                },
+            ),
+            "npcs": Leaf {
+                value: Array(
+                    [
+                        Object(
+                            {
+                                "hp": Int(
+                                    10,
+                                ),
+                                "name": String(
+                                    "slime",
+                                ),
+                            },
+                        ),
+                        Object(
+                            {
+                                "hp": Int(
+                                    12,
+                                ),
+                                "name": String(
+                                    "bat",
+                                ),
+                            },
+                        ),
+                    ],
+                ),
+                source: File(
+                    "tests/fixtures/excel_sheets/config/game.xlsx",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

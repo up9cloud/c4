@@ -1,0 +1,51 @@
+Trace {
+    value: Object(
+        {
+            "servers": Leaf {
+                value: Array(
+                    [
+                        Object(
+                            {
+                                "host": String(
+                                    "alpha",
+                                ),
+                                "port": Uint(
+                                    8080,
+                                ),
+                            },
+                        ),
+                        Object(
+                            {
+                                "host": String(
+                                    "beta",
+                                ),
+                                "port": Uint(
+                                    9090,
+                                ),
+                            },
+                        ),
+                    ],
+                ),
+                source: File(
+                    "tests/fixtures/csv_array_key/config/data.csv",
+                ),
+            },
+            "tags": Leaf {
+                value: Array(
+                    [
+                        String(
+                            "red",
+                        ),
+                        String(
+                            "blue",
+                        ),
+                    ],
+                ),
+                source: File(
+                    "tests/fixtures/csv_array_key/config/data.csv",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

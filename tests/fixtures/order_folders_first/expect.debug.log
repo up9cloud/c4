@@ -1,0 +1,15 @@
+Trace {
+    value: Object(
+        {
+            "who": Leaf {
+                value: String(
+                    "file",
+                ),
+                source: File(
+                    "tests/fixtures/order_folders_first/config/a.yml",
+                ),
+            },
+        },
+    ),
+    warnings: [],
+}

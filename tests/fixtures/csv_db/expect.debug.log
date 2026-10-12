@@ -1,0 +1,45 @@
+Trace {
+    value: Leaf {
+        value: Array(
+            [
+                Object(
+                    {
+                        "id": Uint(
+                            1,
+                        ),
+                        "name": String(
+                            "sword",
+                        ),
+                        "price": Float(
+                            10.5,
+                        ),
+                        "stats": Object(
+                            {
+                                "atk": Int(
+                                    7,
+                                ),
+                            },
+                        ),
+                    },
+                ),
+                Object(
+                    {
+                        "id": Uint(
+                            2,
+                        ),
+                        "name": String(
+                            "shield",
+                        ),
+                        "price": Float(
+                            7.0,
+                        ),
+                    },
+                ),
+            ],
+        ),
+        source: File(
+            "tests/fixtures/csv_db/config/data.csv",
+        ),
+    },
+    warnings: [],
+}
