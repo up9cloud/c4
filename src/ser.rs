@@ -1,5 +1,5 @@
-//! Serialize any serde type into a [`Value`] — the engine behind
-//! [`crate::Source::value`] (typed in-code overrides). Pure serde, no
+//! Serialize any serde type into a [`Value`] — the engine behind the
+//! 1-tuple `(value,)` source (typed in-code overrides). Pure serde, no
 //! format feature involved. Map keys must be strings; enums follow the
 //! usual serde shapes (unit variant → string, data variant →
 //! `{variant: …}`).
@@ -30,6 +30,22 @@ impl ser::Error for SerError {
 }
 
 pub(crate) struct ValueSerializer;
+
+thread_local! {
+    /// Set by `serialize_none`: `Value::Null` alone cannot tell `None` from
+    /// an explicit null (`()`, `serde_json::Value::Null`).
+    static SAW_NONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A struct field or map entry's value — `None` when the value is
+/// `Option::None`, which a typed override leaves out so it overrides
+/// nothing.
+fn entry_value<T: Serialize + ?Sized>(value: &T) -> Result<Option<Value>, SerError> {
+    SAW_NONE.with(|saw| saw.set(false));
+    let value = value.serialize(ValueSerializer)?;
+    let none = SAW_NONE.with(|saw| saw.replace(false));
+    Ok((!(none && matches!(value, Value::Null))).then_some(value))
+}
 
 impl Serializer for ValueSerializer {
     type Ok = Value;
@@ -114,6 +130,7 @@ impl Serializer for ValueSerializer {
     }
 
     fn serialize_none(self) -> Result<Value, SerError> {
+        SAW_NONE.with(|saw| saw.set(true));
         Ok(Value::Null)
     }
 
@@ -290,7 +307,9 @@ impl ser::SerializeMap for MapSer {
             .key
             .take()
             .expect("serialize_value before serialize_key");
-        self.entries.insert(key, value.serialize(ValueSerializer)?);
+        if let Some(value) = entry_value(value)? {
+            self.entries.insert(key, value);
+        }
         Ok(())
     }
 
@@ -308,8 +327,9 @@ impl ser::SerializeStruct for MapSer {
         key: &'static str,
         value: &T,
     ) -> Result<(), SerError> {
-        self.entries
-            .insert(key.to_owned(), value.serialize(ValueSerializer)?);
+        if let Some(value) = entry_value(value)? {
+            self.entries.insert(key.to_owned(), value);
+        }
         Ok(())
     }
 
@@ -332,8 +352,9 @@ impl ser::SerializeStructVariant for VariantMapSer {
         key: &'static str,
         value: &T,
     ) -> Result<(), SerError> {
-        self.entries
-            .insert(key.to_owned(), value.serialize(ValueSerializer)?);
+        if let Some(value) = entry_value(value)? {
+            self.entries.insert(key.to_owned(), value);
+        }
         Ok(())
     }
 

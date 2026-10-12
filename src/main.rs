@@ -67,6 +67,9 @@ Notes:
   grid (keys row, types row, data rows); every sheet is read and merged
   like a file (with --sheetname-as-key, each becomes a key instead).
   They are input-only formats (-f excel is not valid output).
+  env and ini output reads back with c4: env quotes and escapes the dotenv
+  way; ini writes one [section] level and errors on what ini cannot hold
+  (nested sections, newlines, edge whitespace, '=' in keys).
 ";
 
 /// Output serializer. Jsonc collapses into Json; env and ini share the
@@ -283,15 +286,22 @@ fn emit(tree: &serde_json::Value, format: OutFormat) -> Result<String, String> {
         OutFormat::Json => serde_json::to_string_pretty(tree)
             .map(|s| s + "\n")
             .map_err(|e| e.to_string()),
-        OutFormat::Yaml => serde_yaml::to_string(tree).map_err(|e| e.to_string()),
+        OutFormat::Yaml => yaml_serde::to_string(tree).map_err(|e| e.to_string()),
         OutFormat::Toml => toml::to_string_pretty(tree).map_err(|e| e.to_string()),
-        OutFormat::Ini | OutFormat::Env => {
+        OutFormat::Env => {
             let mut out = String::new();
             for (key, value) in flatten(tree) {
+                if key.is_empty()
+                    || key.starts_with('#')
+                    || key.chars().any(|c| c == '=' || c.is_whitespace())
+                {
+                    return Err(format!("key '{key}' cannot be written as env"));
+                }
                 out.push_str(&format!("{key}={}\n", env_value(value)?));
             }
             Ok(out)
         }
+        OutFormat::Ini => ini(tree),
         OutFormat::Csv => {
             let mut out = String::new();
             for (key, value) in flatten(tree) {
@@ -334,28 +344,99 @@ fn flatten(tree: &serde_json::Value) -> Vec<(String, &serde_json::Value)> {
     out
 }
 
-/// env/ini value text: scalars raw, arrays embedded as JSON strings.
+/// env value text: scalars raw, arrays embedded as JSON strings, quoted
+/// and escaped the dotenv way when needed so the env parser reads it back.
 fn env_value(value: &serde_json::Value) -> Result<String, String> {
+    let text = scalar_text(value)?;
+    let plain = !text.is_empty()
+        && !text.starts_with(['"', '\''])
+        && !text
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '#' | '"'));
+    if plain {
+        return Ok(text);
+    }
+    let mut quoted = String::from('"');
+    for c in text.chars() {
+        match c {
+            '\n' => quoted.push_str("\\n"),
+            '\r' => quoted.push_str("\\r"),
+            '\t' => quoted.push_str("\\t"),
+            '"' => quoted.push_str("\\\""),
+            '\\' => quoted.push_str("\\\\"),
+            c => quoted.push(c),
+        }
+    }
+    quoted.push('"');
+    Ok(quoted)
+}
+
+/// Scalars as text, arrays embedded as JSON strings.
+fn scalar_text(value: &serde_json::Value) -> Result<String, String> {
     Ok(match value {
         serde_json::Value::Null => String::new(),
-        serde_json::Value::String(s) => quote_if_needed(s),
+        serde_json::Value::String(s) => s.clone(),
         serde_json::Value::Bool(_) | serde_json::Value::Number(_) => value.to_string(),
-        serde_json::Value::Array(_) => {
-            quote_if_needed(&serde_json::to_string(value).map_err(|e| e.to_string())?)
-        }
+        serde_json::Value::Array(_) => serde_json::to_string(value).map_err(|e| e.to_string())?,
         serde_json::Value::Object(_) => unreachable!("objects are flattened"),
     })
 }
 
-fn quote_if_needed(s: &str) -> String {
-    if s.is_empty()
-        || s.chars()
-            .any(|c| c.is_whitespace() || matches!(c, '#' | '"' | '\''))
-    {
-        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-    } else {
-        s.to_owned()
+/// ini output — the subset c4's ini parser reads: root keys first, then
+/// one `[section]` per top-level object; no quoting or escapes, so what
+/// that cannot hold is an error instead of a file that reads back wrong.
+fn ini(tree: &serde_json::Value) -> Result<String, String> {
+    let serde_json::Value::Object(root) = tree else {
+        return Err("ini output needs an object at the root".into());
+    };
+    let line = |key: &str, value: &serde_json::Value| -> Result<String, String> {
+        if key.is_empty()
+            || key.starts_with(['[', ';', '#'])
+            || key.contains(['=', '\n'])
+            || key.trim() != key
+        {
+            return Err(format!("key '{key}' cannot be written as ini"));
+        }
+        let text = scalar_text(value)?;
+        if text.contains(['\n', '\r']) {
+            return Err(format!(
+                "value of '{key}' has a newline, which ini cannot hold"
+            ));
+        }
+        if text.trim() != text {
+            return Err(format!(
+                "value of '{key}' has leading or trailing whitespace, which ini cannot hold"
+            ));
+        }
+        Ok(format!("{key}={text}\n"))
+    };
+    let mut out = String::new();
+    for (key, value) in root {
+        if !value.is_object() {
+            out.push_str(&line(key, value)?);
+        }
     }
+    for (section, value) in root {
+        let serde_json::Value::Object(entries) = value else {
+            continue;
+        };
+        if section.is_empty() || section.contains([']', '\n']) || section.trim() != section {
+            return Err(format!("section '{section}' cannot be written as ini"));
+        }
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&format!("[{section}]\n"));
+        for (key, value) in entries {
+            if value.is_object() {
+                return Err(format!(
+                    "'{section}.{key}' nests below a section, which ini cannot hold"
+                ));
+            }
+            out.push_str(&line(key, value)?);
+        }
+    }
+    Ok(out)
 }
 
 /// csv value cell + explicit format column.

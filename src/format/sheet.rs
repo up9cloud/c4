@@ -37,10 +37,13 @@ pub(crate) fn parse_excel(
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_lowercase);
+    let file = open(path)?;
     let workbook = match ext.as_deref() {
-        Some("xls") => Sheets::Xls(calamine::open_workbook(path).map_err(open_err(path))?),
-        Some("xlsb") => Sheets::Xlsb(calamine::open_workbook(path).map_err(open_err(path))?),
-        _ => Sheets::Xlsx(calamine::open_workbook(path).map_err(open_err(path))?),
+        Some("xls") => Sheets::Xls(calamine::open_workbook_from_rs(file).map_err(open_err(path))?),
+        Some("xlsb") => {
+            Sheets::Xlsb(calamine::open_workbook_from_rs(file).map_err(open_err(path))?)
+        }
+        _ => Sheets::Xlsx(calamine::open_workbook_from_rs(file).map_err(open_err(path))?),
     };
     parse_workbook(workbook, path, sheet_name, layout, options)
 }
@@ -52,8 +55,17 @@ pub(crate) fn parse_ods(
     layout: &TableLayout,
     options: &Options,
 ) -> Result<Value> {
-    let workbook = Sheets::Ods(calamine::open_workbook(path).map_err(open_err(path))?);
+    let workbook =
+        Sheets::Ods(calamine::open_workbook_from_rs(open(path)?).map_err(open_err(path))?);
     parse_workbook(workbook, path, sheet_name, layout, options)
+}
+
+/// Opening is ours, so a missing or unreadable file is `Error::Io`; only
+/// what calamine finds inside the file is a parse error.
+fn open(path: &Path) -> Result<BufReader<File>> {
+    File::open(path)
+        .map(BufReader::new)
+        .map_err(crate::error::io(path))
 }
 
 fn open_err<E: Display>(path: &Path) -> impl Fn(E) -> Error + '_ {

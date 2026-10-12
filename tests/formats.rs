@@ -867,6 +867,40 @@ mod csv {
 
 #[cfg(feature = "json")]
 #[test]
+fn strict_json_empty_file_suggests_jsonc() {
+    let options = c4::Options {
+        formats: vec![c4::Format::Json.into()],
+        sources: vec![("json", "  \n").into()],
+        ..crate::common::base()
+    };
+    let err = c4::Loader::new(options).load::<c4::Value>().unwrap_err();
+    assert!(matches!(err, c4::Error::Parse { .. }), "{err:?}");
+    assert!(err.to_string().contains("empty document"), "{err}");
+    assert!(
+        err.to_string().contains(r#"("jsonc", ["json", "jsonc"])"#),
+        "{err}"
+    );
+}
+
+#[cfg(feature = "yaml")]
+#[test]
+fn yaml_merge_keys() {
+    let value: c4::Value = loader(vec![
+        (
+            "yaml",
+            "base: &base\n  host: a\n  port: 1\nprod:\n  <<: *base\n  port: 2\n",
+        )
+            .into(),
+    ])
+    .load()
+    .unwrap();
+    assert_eq!(value["prod"]["host"].as_str(), Some("a"));
+    assert_eq!(value["prod"]["port"].as_i64(), Some(2));
+    assert!(value["prod"]["<<"].is_null());
+}
+
+#[cfg(feature = "json")]
+#[test]
 fn strict_json_rejects_comments() {
     let options = c4::Options {
         formats: vec![c4::Format::Json.into()],
@@ -1202,6 +1236,24 @@ fn custom_format_markdown_table() {
 #[cfg(feature = "excel")]
 mod excel {
     use crate::common::{base, check, expect, fx, loader};
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_workbook_is_an_io_error() {
+        let dir = std::env::temp_dir().join(format!("c4-xlsx-io-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let link = dir.join("dead.xlsx");
+        std::os::unix::fs::symlink("/nonexistent/c4.xlsx", &link).unwrap();
+        let err = loader(vec![dir.clone().into()])
+            .load::<c4::Value>()
+            .unwrap_err();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            matches!(&err, c4::Error::Io { path, .. } if path == &link),
+            "{err:?}"
+        );
+    }
 
     #[test]
     fn merge_mode_merges_non_ignored_sheets() {
@@ -1842,6 +1894,32 @@ fn env_array_index_limit_reports_the_line() {
         err.to_string().contains("line 2: array index 10001"),
         "{err}"
     );
+}
+
+#[cfg(feature = "env")]
+#[test]
+fn env_double_quote_escapes() {
+    let value: c4::Value = common::loader(vec![
+        (
+            "env",
+            r#"A="a\nb\tc"
+B="say \"hi\" # not a comment"
+C="x\\y"
+D='a\nb'
+E="a\qb"
+F="tail\\"
+"#,
+        )
+            .into(),
+    ])
+    .load()
+    .unwrap();
+    assert_eq!(value["A"].as_str(), Some("a\nb\tc"));
+    assert_eq!(value["B"].as_str(), Some(r#"say "hi" # not a comment"#));
+    assert_eq!(value["C"].as_str(), Some(r"x\y"));
+    assert_eq!(value["D"].as_str(), Some(r"a\nb")); // single quotes: literal
+    assert_eq!(value["E"].as_str(), Some(r"a\qb")); // unknown escape kept
+    assert_eq!(value["F"].as_str(), Some(r"tail\"));
 }
 
 #[cfg(feature = "env")]

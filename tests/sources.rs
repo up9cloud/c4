@@ -153,6 +153,53 @@ fn value_source_serde_shapes() {
 }
 
 #[test]
+fn value_source_none_overrides_nothing() {
+    // an unset Option field (a CLI flag not given) keeps the earlier value
+    #[derive(serde::Serialize)]
+    struct Args {
+        port: Option<u16>,
+        host: Option<&'static str>,
+        nested: Nested,
+    }
+    #[derive(serde::Serialize)]
+    struct Nested {
+        level: Option<u8>,
+    }
+    let v: c4::Value = loader(vec![
+        (json!({"port": 8080, "host": "a", "nested": {"level": 1}, "m": {"k": 1}, "x": 1}),).into(),
+        (Args {
+            port: None,
+            host: Some("b"),
+            nested: Nested { level: None },
+        },)
+            .into(),
+        (std::collections::BTreeMap::from([(
+            "m",
+            std::collections::BTreeMap::from([("k", None::<u8>)]),
+        )]),)
+            .into(),
+        (json!({"x": null}),).into(),
+        (json!({"list": [1, 2]}),).into(),
+        (std::collections::BTreeMap::from([(
+            "list",
+            vec![Some(1), None],
+        )]),)
+            .into(),
+    ])
+    .load()
+    .unwrap();
+    assert_eq!(v["port"].as_u64(), Some(8080));
+    assert_eq!(v["host"].as_str(), Some("b"));
+    assert_eq!(v["nested"]["level"].as_u64(), Some(1));
+    assert_eq!(v["m"]["k"].as_u64(), Some(1)); // map entries too
+    // an explicit null still overrides
+    assert!(v["x"].is_null() && v.as_object().unwrap().contains_key("x"));
+    // inside a sequence None stays a positional null
+    assert_eq!(v["list"].as_array().unwrap().len(), 2);
+    assert!(v["list"][1].is_null());
+}
+
+#[test]
 fn table_layout_converts_from_id() {
     use c4::TableLayout;
     assert_eq!(TableLayout::from("kv"), TableLayout::Kv);

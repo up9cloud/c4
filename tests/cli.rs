@@ -221,3 +221,108 @@ fn warnings_go_to_stderr_in_every_mode() {
         );
     }
 }
+
+/// Write `json` to a temp file, convert it with `-f <format>`, and return
+/// the output file (named for its format so c4 can read it back) or the
+/// failed run.
+fn convert(name: &str, json: &Json, format: &str) -> Result<std::path::PathBuf, String> {
+    let dir = std::env::temp_dir().join(format!("c4-cli-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("in.json");
+    std::fs::write(&input, json.to_string()).unwrap();
+    let out = c4(&["-f", format, input.to_str().unwrap()]);
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+    }
+    let path = dir.join(if format == "env" { ".env" } else { "out.ini" });
+    std::fs::write(&path, &out.stdout).unwrap();
+    Ok(path)
+}
+
+#[test]
+fn env_output_reads_back() {
+    let json = serde_json::json!({
+        "multi": "line1\nline2\ttab",
+        "q": "say \"hi\" # not a comment",
+        "back": "C:\\temp\\",
+        "lead": "  padded ",
+        "hash": "#fff",
+        "empty": "",
+        "single": "it's",
+        "db": { "host": "localhost" }
+    });
+    let path = convert("env-rt", &json, "env").unwrap();
+    let back = stdout_json(&c4(&["-f", "json", "--no-dot-key", path.to_str().unwrap()]));
+    let expected = serde_json::json!({
+        "multi": "line1\nline2\ttab",
+        "q": "say \"hi\" # not a comment",
+        "back": "C:\\temp\\",
+        "lead": "  padded ",
+        "hash": "#fff",
+        "empty": "",
+        "single": "it's",
+        "db.host": "localhost"
+    });
+    assert_eq!(back, expected);
+}
+
+#[test]
+fn env_output_rejects_unwritable_keys() {
+    let err = convert("env-key", &serde_json::json!({ "a=b": "x" }), "env").unwrap_err();
+    assert!(err.contains("key 'a=b' cannot be written as env"), "{err}");
+}
+
+#[test]
+fn ini_output_reads_back() {
+    let json = serde_json::json!({
+        "name": "c4",
+        "list": [1, 2],
+        "server": { "host": "localhost", "note": "a;b #c" },
+        "db": { "port": 5432 }
+    });
+    let path = convert("ini-rt", &json, "ini").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "list=[1,2]\nname=c4\n\n[db]\nport=5432\n\n[server]\nhost=localhost\nnote=a;b #c\n"
+    );
+    let back = stdout_json(&c4(&["-f", "json", path.to_str().unwrap()]));
+    assert_eq!(
+        back,
+        serde_json::json!({
+            "name": "c4",
+            "list": "[1,2]",
+            "server": { "host": "localhost", "note": "a;b #c" },
+            "db": { "port": "5432" }
+        })
+    );
+}
+
+#[test]
+fn ini_output_rejects_what_ini_cannot_hold() {
+    for (json, needle) in [
+        (
+            serde_json::json!({ "a": { "b": { "c": 1 } } }),
+            "'a.b' nests below a section",
+        ),
+        (
+            serde_json::json!({ "multi": "x\ny" }),
+            "value of 'multi' has a newline",
+        ),
+        (
+            serde_json::json!({ "pad": " x" }),
+            "value of 'pad' has leading or trailing whitespace",
+        ),
+        (
+            serde_json::json!({ "a=b": 1 }),
+            "key 'a=b' cannot be written as ini",
+        ),
+        (
+            serde_json::json!({ "s]": { "k": 1 } }),
+            "section 's]' cannot be written as ini",
+        ),
+    ] {
+        let err = convert("ini-err", &json, "ini").unwrap_err();
+        assert!(err.contains(needle), "{json}: {err}");
+    }
+}

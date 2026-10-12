@@ -107,9 +107,9 @@ The full flag list, defaults and examples live in `c4 --help` (and, if
 you want the exact behavior, [`src/main.rs`](src/main.rs)). In short:
 `-f` wins over the `-o` extension, else output is `debug` (the Rust
 `{:#?}` form); output is deterministic (sorted keys, two-space json,
-trailing newline) so tests compare it byte-for-byte; flat formats
-(env/ini/csv) dot nested keys; and errors go to stderr with a non-zero
-exit.
+trailing newline) so tests compare it byte-for-byte; env and csv dot
+nested keys, ini writes one `[section]` level; and errors go to stderr
+with a non-zero exit.
 
 ## Examples
 

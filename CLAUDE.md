@@ -117,6 +117,17 @@ the statement; the crate docs do not repeat it.
 - **Each format has a default layout** (2026-07-12): `db` for excel/ods —
   spreadsheets are grids — and `kv` for csv, which keeps settings files
   simple.
+- **Typed overrides skip `None`** (owner, 2026-10-12): an unset
+  `Option` field in a `(value,)` source (a CLI flag not given) must not
+  erase what config files set. `src/ser.rs` tells `None` from an explicit
+  null with a thread-local flag set by `serialize_none`. Null written in
+  a file still overrides.
+- **Strict json keeps erroring on an empty file** (owner, 2026-10-12) —
+  it is strict on purpose — but the message points at `jsonc`, which
+  treats an empty document as empty.
+- **No leniency for hand-written csv** (owner, 2026-10-12): value cells
+  are not trimmed (`port, 8080` is the string `" 8080"`). csv here is a
+  spreadsheet export; people writing config by hand use jsonc or yaml.
 - **dot_key applies to sheet names but never to file or folder names**
   (owner, 2026-07-27): file names carry dots for unrelated reasons
   (extensions, `app.local.yml`); sheets have no such convention.
@@ -186,6 +197,9 @@ coerce; `deserialize_any` keeps the string.
 
 ### Spreadsheets
 
+- **Office lock files are not special-cased** (owner, 2026-10-12): Excel's
+  `~$book.xlsx` fails the load while the workbook is open, and that is
+  correct — workbooks are edited elsewhere, uploaded, then reloaded.
 - Each sheet is treated like a file (owner, 2026-07-22): without
   `sheetname_as_key`, every remaining sheet merges in `order` by name —
   this replaced the old "only the sheet named `config`" rule.
@@ -203,8 +217,8 @@ coerce; `deserialize_any` keeps the string.
 
 ### cnf (owner, 2026-10-12)
 
-`.ini` has a spec and stays strict; `.cnf` has none, so its parser is
-lenient: every `.cnf` commonly found online must parse without error.
+`.ini` is read strictly (the common subset — see "env and ini");
+`.cnf` has many dialects, so its parser is lenient: every `.cnf` commonly found online must parse without error.
 Where dialects conflict, **my.cnf wins** (the bulk of real files), with
 no per-dialect exceptions:
 
@@ -219,11 +233,26 @@ no per-dialect exceptions:
 - Variables (`$dir`, `$ENV::HOME`) stay literal, like env.
 - Directives are skipped with a warning, never followed.
 
-### env (owner, 2026-10-12)
+### env and ini (owner, 2026-10-12)
 
-Inline comments follow the common dotenv rule (python-dotenv, docker
-compose): a quoted value ends at its closing quote; in an unquoted value
-`#` starts a comment only after whitespace, so `C=#fff` keeps its value.
+- env follows the common dotenv rules (python-dotenv, docker compose):
+  a quoted value ends at its closing quote; unquoted, `#` starts a
+  comment only after whitespace (`C=#fff` keeps its value); double
+  quotes take `\n \r \t \" \\`.
+- **ini has no formal spec.** The de facto references disagree (Windows
+  `GetPrivateProfileString` strips quotes; Python configparser continues
+  values on indented lines), so c4 implements only their common subset:
+  `[section]` one level deep, `key=value`, `;`/`#` whole-line comments,
+  no quoting, no escapes, no multi-line values.
+- **CLI env/ini output must read back with c4's own parsers.** env quotes
+  and escapes as above; ini writes root keys, then one `[section]` per
+  top-level object, and errors on what the subset cannot hold (a newline
+  in a value, `=` in a key, leading/trailing whitespace, nesting below a
+  section). env errors on keys it cannot hold (`=`, whitespace, empty,
+  leading `#`).
+- yaml is read with `yaml_serde` (the YAML organization's maintained
+  serde_yaml fork; serde_yaml is deprecated), and `<<` merge keys are
+  applied.
 
 ### Warnings (owner, 2026-10-12)
 
@@ -246,8 +275,9 @@ compose): a quoted value ends at its closing quote; in an unquoted value
 sources and layouts, which are library-only. Output-format resolution:
 `-f` (ids + `debug`; `jsonc` = `json`) → `-o` extension → `debug`. With
 `-o` nothing goes to stdout. Output is deterministic: sorted keys; json
-is two-space pretty + trailing newline; env/ini are sorted dotted
-`key=value` lines (arrays as JSON strings, quoted only when needed); csv
+is two-space pretty + trailing newline; env is sorted dotted `key=value`
+lines and ini root keys + `[section]`s (arrays as JSON strings; both
+must read back — see "env and ini"); csv
 is `key,value,format` rows with concrete ids (arrays/objects as one
 `json` cell; typed text values as `str` — the CLI works from the
 serialized tree). Errors go to stderr with exit 1.

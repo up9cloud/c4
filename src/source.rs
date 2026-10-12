@@ -116,6 +116,12 @@ where
 /// [`Error::Parse`](crate::Error::Parse); a `Null` root (e.g. `None`)
 /// contributes nothing.
 ///
+/// A struct field or map entry whose value is **`None` is left out**, so
+/// it overrides nothing: an `Option` field you did not set (a CLI flag
+/// that was not given) keeps the earlier sources' value. An explicit null
+/// — `()`, `serde_json::Value::Null`, [`Value::Null`] — still overrides.
+/// `None` inside a sequence stays a positional null.
+///
 /// The single-element tuple is what keeps this distinct: `&str`, `String`,
 /// tuples and paths are all themselves `Serialize`, so a blanket
 /// `From<impl Serialize>` would overlap the conversions above — but a

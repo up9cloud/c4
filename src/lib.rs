@@ -96,7 +96,10 @@
 //!    explicit control.
 //! 4. An empty result — an empty file or string, a workbook with no
 //!    sheets left, a `(value,)` override that serializes to null —
-//!    contributes nothing: it never clears what earlier sources set.
+//!    contributes nothing: it never clears what earlier sources set. The
+//!    one exception is **strict** `json`, where an empty document is a
+//!    parse error (the message suggests letting `jsonc` read `.json`,
+//!    which treats it as empty).
 //!
 //! A [`CustomFormat`] is an id, the extensions it claims, and a parser
 //! callback. It goes into `Options.formats` like any built-in — one list,
@@ -182,10 +185,14 @@
 //! | `excel` | `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | `excel` |
 //! | `ods`   | `.ods`             | `ods`   |
 //!
+//! `yaml` resolves anchors, aliases and `<<` merge keys.
+//!
 //! `env` follows the dotenv conventions: `export` is optional, a quoted
 //! value ends at its closing quote, and in an unquoted value `#` starts a
 //! comment only after whitespace (`A=1 # note` is `1`, `C=#fff` stays
-//! `#fff`). ini, env and cnf values are strings; they still load into
+//! `#fff`). Inside **double** quotes `\n`, `\r`, `\t`, `\"` and `\\`
+//! are escapes (any other `\X` stays as written); single quotes are
+//! literal. ini, env and cnf values are strings; they still load into
 //! typed fields — see [`Loader::load`].
 //!
 //! # Folder shape: keys and depth
@@ -465,8 +472,9 @@
 //!
 //! # cnf files
 //!
-//! `.ini` follows its spec strictly; `.cnf` has no spec and several
-//! dialects, so the `cnf` parser is lenient enough to read `my.cnf`
+//! `.ini` is read strictly — the subset the de facto ini dialects share:
+//! `[section]` one level deep, `key=value`, `;`/`#` comment lines, no
+//! quoting or escapes. `.cnf` has no spec and several dialects, so the `cnf` parser is lenient enough to read `my.cnf`
 //! (MySQL/MariaDB), `openssl.cnf` and the like as they are; where the
 //! dialects disagree it follows MySQL. `[ section ]` headers; `#`
 //! comments anywhere outside quotes, `;` and `%` comments at line start
