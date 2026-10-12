@@ -11,13 +11,34 @@ use serde::de::{
 use crate::Value;
 
 /// Error type of the [`Value`] deserializer; converted to
-/// [`crate::Error::Deserialize`] by `Loader::load`.
+/// [`crate::Error::Deserialize`] by `Loader::load`. `path` collects the
+/// keys (`db`) and indexes (`[2]`) the error bubbled out of, outermost
+/// first.
 #[derive(Debug)]
-pub(crate) struct DeError(String);
+pub(crate) struct DeError {
+    path: Vec<String>,
+    message: String,
+}
+
+impl DeError {
+    fn at(mut self, segment: String) -> Self {
+        self.path.insert(0, segment);
+        self
+    }
+}
 
 impl fmt::Display for DeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        for (i, segment) in self.path.iter().enumerate() {
+            if i > 0 && !segment.starts_with('[') {
+                f.write_str(".")?;
+            }
+            f.write_str(segment)?;
+        }
+        if !self.path.is_empty() {
+            f.write_str(": ")?;
+        }
+        f.write_str(&self.message)
     }
 }
 
@@ -25,7 +46,10 @@ impl std::error::Error for DeError {}
 
 impl de::Error for DeError {
     fn custom<T: fmt::Display>(msg: T) -> Self {
-        DeError(msg.to_string())
+        DeError {
+            path: Vec::new(),
+            message: msg.to_string(),
+        }
     }
 }
 
@@ -77,7 +101,10 @@ impl<'de> Deserializer<'de> for ValueDeserializer {
             | Value::Uuid(s) => visitor.visit_string(s),
             Value::Ipv4(ip) => visitor.visit_string(ip.to_string()),
             Value::Ipv6(ip) => visitor.visit_string(ip.to_string()),
-            Value::Array(items) => visitor.visit_seq(SeqDe(items.into_iter())),
+            Value::Array(items) => visitor.visit_seq(SeqDe {
+                iter: items.into_iter(),
+                index: 0,
+            }),
             Value::Object(map) => visitor.visit_map(MapDe {
                 iter: map.into_iter(),
                 value: None,
@@ -134,13 +161,34 @@ impl<'de> Deserializer<'de> for ValueDeserializer {
         deserialize_f64 => "f64",
     }
 
+    fn deserialize_str<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, DeError> {
+        self.deserialize_string(visitor)
+    }
+
+    /// A number or bool reaching a string field becomes its text; floats
+    /// use `{:?}`, the shortest round-trip form that keeps `1.0`'s `.0`.
+    fn deserialize_string<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, DeError> {
+        match self.0 {
+            Value::Bool(b) => visitor.visit_string(b.to_string()),
+            Value::Int(i) => visitor.visit_string(i.to_string()),
+            Value::Uint(u) => visitor.visit_string(u.to_string()),
+            Value::Int128(i) => visitor.visit_string(i.to_string()),
+            Value::Uint128(u) => visitor.visit_string(u.to_string()),
+            Value::Float(f) => visitor.visit_string(format!("{f:?}")),
+            other => ValueDeserializer(other).deserialize_any(visitor),
+        }
+    }
+
     serde::forward_to_deserialize_any! {
-        char str string bytes byte_buf unit unit_struct seq tuple tuple_struct
+        char bytes byte_buf unit unit_struct seq tuple tuple_struct
         map struct identifier ignored_any
     }
 }
 
-struct SeqDe(std::vec::IntoIter<Value>);
+struct SeqDe {
+    iter: std::vec::IntoIter<Value>,
+    index: usize,
+}
 
 impl<'de> SeqAccess<'de> for SeqDe {
     type Error = DeError;
@@ -149,16 +197,20 @@ impl<'de> SeqAccess<'de> for SeqDe {
         &mut self,
         seed: T,
     ) -> Result<Option<T::Value>, DeError> {
-        match self.0.next() {
-            Some(value) => seed.deserialize(ValueDeserializer(value)).map(Some),
-            None => Ok(None),
-        }
+        let Some(value) = self.iter.next() else {
+            return Ok(None);
+        };
+        let index = self.index;
+        self.index += 1;
+        seed.deserialize(ValueDeserializer(value))
+            .map(Some)
+            .map_err(|e| e.at(format!("[{index}]")))
     }
 }
 
 struct MapDe {
     iter: btree_map::IntoIter<String, Value>,
-    value: Option<Value>,
+    value: Option<(String, Value)>,
 }
 
 impl<'de> MapAccess<'de> for MapDe {
@@ -170,7 +222,7 @@ impl<'de> MapAccess<'de> for MapDe {
     ) -> Result<Option<K::Value>, DeError> {
         match self.iter.next() {
             Some((key, value)) => {
-                self.value = Some(value);
+                self.value = Some((key.clone(), value));
                 seed.deserialize(ValueDeserializer(Value::String(key)))
                     .map(Some)
             }
@@ -179,11 +231,12 @@ impl<'de> MapAccess<'de> for MapDe {
     }
 
     fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, DeError> {
-        let value = self
+        let (key, value) = self
             .value
             .take()
             .expect("next_value_seed before next_key_seed");
         seed.deserialize(ValueDeserializer(value))
+            .map_err(|e| e.at(key))
     }
 }
 

@@ -41,7 +41,10 @@ pub enum Source {
     /// Inside a folder, a file whose extension no format in
     /// [`Options::formats`](crate::Options::formats) claims is skipped;
     /// a single-file source naming such a file is
-    /// [`Error::Parse`](crate::Error::Parse) — you asked for that file.
+    /// [`Error::Parse`](crate::Error::Parse) — you asked for that file —
+    /// and the message says how to fix it: which Cargo feature enables
+    /// the format that reads that extension, or that the format is
+    /// missing from `formats`.
     Path(PathBuf),
     /// An in-code string; its format may be a built-in or a
     /// [`CustomFormat`](crate::CustomFormat) (no `formats` registration

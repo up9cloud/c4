@@ -185,6 +185,9 @@
 //! | `excel` | `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | `excel` |
 //! | `ods`   | `.ods`             | `ods`   |
 //!
+//! A leading UTF-8 byte-order mark (Windows editors, Excel exports) is
+//! ignored by every text format, custom formats included.
+//!
 //! `yaml` resolves anchors, aliases and `<<` merge keys.
 //!
 //! `env` follows the dotenv conventions: `export` is optional, a quoted

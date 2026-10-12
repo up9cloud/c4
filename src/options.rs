@@ -47,6 +47,21 @@ pub enum Format {
 }
 
 impl Format {
+    /// Every format, `Jsonc` before `Json` (the default reader of
+    /// `.json`).
+    pub(crate) const ALL: [Format; 10] = [
+        Format::Jsonc,
+        Format::Json,
+        Format::Yaml,
+        Format::Toml,
+        Format::Ini,
+        Format::Cnf,
+        Format::Env,
+        Format::Csv,
+        Format::Excel,
+        Format::Ods,
+    ];
+
     /// Look a format up by its string id (`"json"`, `"jsonc"`, `"yaml"`,
     /// `"toml"`, `"ini"`, `"cnf"`, `"env"`, `"csv"`, `"excel"`, `"ods"`).
     pub fn from_id(id: &str) -> Option<Format> {

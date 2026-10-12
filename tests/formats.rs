@@ -865,6 +865,68 @@ mod csv {
     }
 }
 
+#[test]
+fn a_leading_bom_is_ignored() {
+    // the custom format sees the text without the BOM
+    let raw = c4::CustomFormat::new("raw", ["raw"], |text, _, _| {
+        Ok(c4::Value::String(text.to_owned()))
+    });
+    let value: c4::Value = loader(vec![(raw, "\u{feff}x").into()])
+        .load::<c4::Value>()
+        .unwrap();
+    assert_eq!(value.as_str(), Some("x"));
+    #[cfg(feature = "env")]
+    {
+        let value: c4::Value = loader(vec![("env", "\u{feff}A=1\n").into()])
+            .load()
+            .unwrap();
+        assert_eq!(value["A"].as_str(), Some("1"));
+    }
+    #[cfg(feature = "ini")]
+    {
+        let value: c4::Value = loader(vec![("ini", "\u{feff}a=1\n").into()])
+            .load()
+            .unwrap();
+        assert_eq!(value["a"].as_str(), Some("1"));
+    }
+    #[cfg(feature = "jsonc")]
+    {
+        let value: c4::Value = loader(vec![("jsonc", "\u{feff}{\"a\":1}").into()])
+            .load()
+            .unwrap();
+        assert_eq!(value["a"].as_i64(), Some(1));
+    }
+}
+
+#[cfg(all(not(feature = "yaml"), any(feature = "json", feature = "jsonc")))]
+#[test]
+fn a_compiled_out_format_names_its_feature() {
+    let err = loader(vec![fx("simple/config/db.yml").into()])
+        .load::<c4::Value>()
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("enable the `yaml` feature"),
+        "{err}"
+    );
+}
+
+#[cfg(feature = "yaml")]
+#[test]
+fn a_format_missing_from_formats_says_so() {
+    let err = c4::Loader::new(c4::Options {
+        sources: vec![fx("simple/config/db.yml").into()],
+        formats: vec![c4::Format::Toml.into()],
+        ..base()
+    })
+    .load::<c4::Value>()
+    .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("the `yaml` format reads it but is not in `formats`"),
+        "{err}"
+    );
+}
+
 #[cfg(feature = "json")]
 #[test]
 fn strict_json_empty_file_suggests_jsonc() {

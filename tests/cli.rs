@@ -326,3 +326,54 @@ fn ini_output_rejects_what_ini_cannot_hold() {
         assert!(err.contains(needle), "{json}: {err}");
     }
 }
+
+#[test]
+fn boolean_flags_take_no_value() {
+    let out = c4(&["--dot-key=false", &fx("simple/config")]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("flag '--dot-key' takes no value (use --no-dot-key to turn it off)"),
+        "{stderr}"
+    );
+    let out = c4(&["--no-dot-key=true", &fx("simple/config")]);
+    assert!(!out.status.success());
+}
+
+#[test]
+fn csv_output_reads_back_nulls() {
+    let json = serde_json::json!({ "n": null, "o": { "x": null, "y": 1 } });
+    let dir = std::env::temp_dir().join(format!("c4-cli-csvnull-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("in.json");
+    std::fs::write(&input, json.to_string()).unwrap();
+    let out = c4(&["-f", "csv", input.to_str().unwrap()]);
+    let csv = stdout_str(&out);
+    assert_eq!(csv, "n,null,json\no.x,null,json\no.y,1,i64\n");
+    let path = dir.join("out.csv");
+    std::fs::write(&path, csv).unwrap();
+    assert_eq!(
+        stdout_json(&c4(&["-f", "json", path.to_str().unwrap()])),
+        json
+    );
+}
+
+#[test]
+fn toml_output_omits_nulls() {
+    let dir = std::env::temp_dir().join(format!("c4-cli-toml-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("in.json");
+    std::fs::write(&input, r#"{"n": null, "o": {"x": null, "y": 1}}"#).unwrap();
+    let out = c4(&["-f", "toml", input.to_str().unwrap()]);
+    assert_eq!(stdout_str(&out), "[o]\ny = 1\n");
+    std::fs::write(&input, r#"{"o": {"list": [1, null]}}"#).unwrap();
+    let out = c4(&["-f", "toml", input.to_str().unwrap()]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("'o.list' holds a null inside an array, which toml cannot hold"),
+        "{stderr}"
+    );
+}

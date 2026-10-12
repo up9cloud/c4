@@ -127,6 +127,68 @@ fn strings_coerce_into_typed_fields() {
     assert_eq!(value["port"].as_str(), Some("8080"));
 }
 
+#[test]
+fn numbers_and_bools_coerce_into_string_fields() {
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct Cfg {
+        password: String,
+        version: String,
+        ratio: String,
+        flag: String,
+        tag: Option<String>,
+    }
+    let cfg: Cfg = loader(vec![
+        (serde_json::json!({
+            "password": 123456, "version": 1.0, "ratio": 0.5, "flag": true, "tag": -3,
+        }),)
+            .into(),
+    ])
+    .load()
+    .unwrap();
+    assert_eq!(
+        cfg,
+        Cfg {
+            password: "123456".into(),
+            version: "1.0".into(),
+            ratio: "0.5".into(),
+            flag: "true".into(),
+            tag: Some("-3".into()),
+        }
+    );
+}
+
+#[test]
+fn deserialize_errors_name_the_key_path() {
+    #[derive(serde::Deserialize, Debug)]
+    #[allow(dead_code)]
+    struct Item {
+        id: u8,
+    }
+    #[derive(serde::Deserialize, Debug)]
+    #[allow(dead_code)]
+    struct Db {
+        port: u16,
+    }
+    #[derive(serde::Deserialize, Debug)]
+    #[allow(dead_code)]
+    struct Cfg {
+        db: Db,
+        items: Vec<Item>,
+    }
+    let load = |json: serde_json::Value| {
+        loader(vec![(json,).into()])
+            .load::<Cfg>()
+            .unwrap_err()
+            .to_string()
+    };
+    let err = load(serde_json::json!({"db": {"port": "x"}, "items": []}));
+    assert_eq!(err, "deserialize error: db.port: 'x' is not a valid u16");
+    let err = load(serde_json::json!({"db": {"port": 1}, "items": [{"id": 1}, {"id": 300}]}));
+    assert!(err.starts_with("deserialize error: items[1].id: "), "{err}");
+    let err = load(serde_json::json!({"db": {}, "items": []}));
+    assert_eq!(err, "deserialize error: db: missing field `port`");
+}
+
 #[cfg(all(unix, any(feature = "json", feature = "jsonc")))]
 #[test]
 fn io_errors_name_the_path() {

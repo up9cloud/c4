@@ -36,6 +36,13 @@ impl Loader {
     /// text is [`Error::Deserialize`] (`'70000' is not a valid u16`). Untyped
     /// targets (`Value`, `String`) keep the string.
     ///
+    /// The reverse holds too: a number or bool reaching a `String` field
+    /// becomes its text (`password: 123456` → `"123456"`; a float in its
+    /// shortest round-trip form, so `1.0` stays `"1.0"`).
+    ///
+    /// Every [`Error::Deserialize`] names the key path it failed at —
+    /// `db.password: invalid type: …`, `items[2].id: …`.
+    ///
     /// ```
     /// #[derive(serde::Deserialize)]
     /// struct Server {
@@ -111,7 +118,7 @@ impl Loader {
                 Source::Path(path) if path.is_file() => {
                     let claim = claimed_format(path, &extensions).ok_or_else(|| Error::Parse {
                         path: path.clone(),
-                        message: "no active format claims this file's extension".into(),
+                        message: unclaimed_message(path),
                     })?;
                     let source = SourceRef::File(path.clone());
                     let mut messages = Vec::new();
@@ -168,14 +175,15 @@ impl Loader {
                         // itself; a custom parser's result is filtered here
                         FormatKind::Builtin(format) => format::parse(
                             *format,
-                            content,
+                            format::strip_bom(content),
                             &crate::TableLayout::Kv,
                             &label,
                             &self.options,
                             &mut messages,
                         )?,
                         FormatKind::Custom(custom) => {
-                            let mut value = (custom.parser)(content, &label, &self.options)?;
+                            let mut value =
+                                (custom.parser)(format::strip_bom(content), &label, &self.options)?;
                             format::strip_commented_data_keys(&mut value, &self.options);
                             value
                         }
@@ -205,14 +213,14 @@ impl Loader {
                 if format::is_binary(format) {
                     return format::parse_binary(format, path, layout, &self.options);
                 }
-                let text = std::fs::read_to_string(path).map_err(error::io(path))?;
+                let text = format::read_text(path)?;
                 format::parse(format, &text, layout, path, &self.options, warnings)
             }
             Claim::Custom(index) => {
                 let FormatKind::Custom(custom) = &self.options.formats[index].format else {
                     unreachable!("custom claims always index custom entries");
                 };
-                let text = std::fs::read_to_string(path).map_err(error::io(path))?;
+                let text = format::read_text(path)?;
                 // built-in formats filter commented data keys inside
                 // `format::parse`/`parse_binary`; do it for custom ones here
                 let mut value = (custom.parser)(&text, path, &self.options)?;
@@ -268,13 +276,13 @@ impl Loader {
                 {
                     // the trimmed content goes through the table auto
                     // detection (same feature-gated guesses)
-                    let text = std::fs::read_to_string(&file).map_err(error::io(&file))?;
+                    let text = format::read_text(&file)?;
                     format::table_auto(text.trim())
                 }
                 None if self.options.filename_as_key && !self.options.ignore_unknown_ext => {
                     return Err(Error::Parse {
+                        message: unclaimed_message(&file),
                         path: file,
-                        message: "no active format claims this file's extension".into(),
                     });
                 }
                 None => continue, // no active format claims this extension
@@ -351,6 +359,35 @@ fn file_extension(name: &str) -> Option<String> {
         Some(i) => Some(stem[i + 1..].to_lowercase()),
         None if hidden && !stem.is_empty() => Some(stem.to_lowercase()),
         None => None,
+    }
+}
+
+/// Why no format claims `path`, and how to fix it: the built-in format
+/// whose default extensions include it is either compiled out (name the
+/// feature) or missing from `Options.formats`.
+fn unclaimed_message(path: &Path) -> String {
+    let base = "no active format claims this file's extension";
+    let Some(ext) = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(file_extension)
+    else {
+        return base.into();
+    };
+    // jsonc before json: it is the default reader of `.json`
+    let reader = Format::ALL
+        .into_iter()
+        .find(|f| f.default_extensions().contains(&ext.as_str()));
+    match reader {
+        Some(f) if !format::is_compiled(f) => format!(
+            "{base}: '.{ext}' is read by the `{id}` format — enable the `{id}` feature",
+            id = f.id()
+        ),
+        Some(f) => format!(
+            "{base}: the `{}` format reads it but is not in `formats`",
+            f.id()
+        ),
+        None => base.into(),
     }
 }
 

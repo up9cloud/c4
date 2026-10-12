@@ -22,7 +22,8 @@ Output:
   -o, --output <path>   write to a file instead of stdout (format from ext)
   --trace               annotate every value with its source + format
 
-Options (mirror Options; each boolean also has a --no-<name> form):
+Options (mirror Options; each boolean also has a --no-<name> form and
+takes no =value):
   --dir-depth <n>       subdirectory levels to scan: 1 (default) = the
                         folder + one level, 0 = the folder only, -1 = all
   --filename-as-key     make each file a key named after it (default off)
@@ -210,7 +211,24 @@ fn run() -> Result<(), String> {
             flag if flag.starts_with('-') => {
                 return Err(format!("unknown flag '{flag}'\n{USAGE}"));
             }
-            _ => sources.push(PathBuf::from(arg)),
+            _ => {
+                sources.push(PathBuf::from(arg));
+                continue;
+            }
+        }
+        // a boolean flag must not take a value: `--dot-key=false` would
+        // otherwise turn the option on
+        let value_flag = matches!(
+            name,
+            "-f" | "--format" | "-o" | "--output" | "--order" | "--dir-depth"
+        );
+        if inline.is_some() && !value_flag {
+            let hint = match name.strip_prefix("--no-") {
+                Some(on) => format!(" (use --{on} to turn it on)"),
+                None if matches!(name, "--trace" | "-h" | "--help") => String::new(),
+                None => format!(" (use --no-{} to turn it off)", &name[2..]),
+            };
+            return Err(format!("flag '{name}' takes no value{hint}"));
         }
     }
 
@@ -287,7 +305,9 @@ fn emit(tree: &serde_json::Value, format: OutFormat) -> Result<String, String> {
             .map(|s| s + "\n")
             .map_err(|e| e.to_string()),
         OutFormat::Yaml => yaml_serde::to_string(tree).map_err(|e| e.to_string()),
-        OutFormat::Toml => toml::to_string_pretty(tree).map_err(|e| e.to_string()),
+        OutFormat::Toml => {
+            toml::to_string_pretty(&without_nulls(tree, "")?).map_err(|e| e.to_string())
+        }
         OutFormat::Env => {
             let mut out = String::new();
             for (key, value) in flatten(tree) {
@@ -315,6 +335,41 @@ fn emit(tree: &serde_json::Value, format: OutFormat) -> Result<String, String> {
             Ok(out)
         }
     }
+}
+
+/// toml has no null: drop null keys (an absent key is toml's null) and
+/// refuse a null inside an array, which has no position to drop.
+fn without_nulls(value: &serde_json::Value, path: &str) -> Result<serde_json::Value, String> {
+    let join = |key: &str| {
+        if path.is_empty() {
+            key.to_owned()
+        } else {
+            format!("{path}.{key}")
+        }
+    };
+    Ok(match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.iter()
+                .filter(|(_, v)| !v.is_null())
+                .map(|(k, v)| Ok((k.clone(), without_nulls(v, &join(k))?)))
+                .collect::<Result<_, String>>()?,
+        ),
+        serde_json::Value::Array(items) => {
+            if items.iter().any(serde_json::Value::is_null) {
+                return Err(format!(
+                    "'{path}' holds a null inside an array, which toml cannot hold"
+                ));
+            }
+            serde_json::Value::Array(
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| without_nulls(v, &format!("{path}[{i}]")))
+                    .collect::<Result<_, String>>()?,
+            )
+        }
+        other => other.clone(),
+    })
 }
 
 /// Depth-first flatten of nested objects into dotted keys (the reverse of
@@ -442,7 +497,8 @@ fn ini(tree: &serde_json::Value) -> Result<String, String> {
 /// csv value cell + explicit format column.
 fn csv_cell(value: &serde_json::Value) -> Result<(String, String), String> {
     Ok(match value {
-        serde_json::Value::Null => (String::new(), "null".into()),
+        // read back as a `json` cell, like arrays
+        serde_json::Value::Null => ("null".into(), "json".into()),
         serde_json::Value::Bool(b) => (b.to_string(), "bool".into()),
         serde_json::Value::Number(n) => (n.to_string(), csv_number_type(n).into()),
         serde_json::Value::String(s) => (s.clone(), "str".into()),

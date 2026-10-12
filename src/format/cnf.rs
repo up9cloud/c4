@@ -9,7 +9,6 @@ use std::path::Path;
 use crate::{Error, Result, Value};
 
 pub(crate) fn parse(text: &str, path: &Path, warnings: &mut Vec<String>) -> Result<Value> {
-    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let error = |number: usize, message: String| Error::Parse {
         path: path.to_path_buf(),
         message: format!("line {number}: {message}"),

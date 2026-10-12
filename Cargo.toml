@@ -6,6 +6,8 @@ rust-version = "1.88"
 description = "Load a folder of config files (jsonc/yaml/json/toml/ini/cnf/env/csv/xlsx/ods) into one deep-merged value"
 license = "MIT"
 repository = "https://github.com/up9cloud/c4"
+keywords = ["config", "configuration", "settings", "spreadsheet", "merge"]
+categories = ["config", "parser-implementations"]
 autoexamples = false
 
 [dependencies]

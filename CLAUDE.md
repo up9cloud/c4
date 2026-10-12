@@ -192,8 +192,11 @@ the statement; the crate docs do not repeat it.
 
 A string reaching a bool or number field parses with that table type
 id's rules (`format::table::scalar`, shared with explicit cells), so ini,
-env and cnf — all strings — load into typed structs. Only typed targets
-coerce; `deserialize_any` keeps the string.
+env and cnf — all strings — load into typed structs; a number or bool
+reaching a string field becomes its text (floats via `{:?}`, so `1.0`
+keeps its `.0`). Only typed targets coerce; `deserialize_any` keeps the
+value. Deserialize errors carry the key path, built in `src/de.rs` as
+errors bubble out of maps and sequences.
 
 ### Spreadsheets
 
@@ -272,15 +275,18 @@ no per-dialect exceptions:
 
 `--help` (`USAGE` in `src/main.rs`) is the flag reference; every
 `Options` field is a flag with a `--no-` form, except `formats`, table
-sources and layouts, which are library-only. Output-format resolution:
+sources and layouts, which are library-only. A boolean flag given a
+value (`--dot-key=false`) is an error — it used to be ignored, silently
+turning the option *on* (owner, 2026-10-12). Output-format resolution:
 `-f` (ids + `debug`; `jsonc` = `json`) → `-o` extension → `debug`. With
 `-o` nothing goes to stdout. Output is deterministic: sorted keys; json
 is two-space pretty + trailing newline; env is sorted dotted `key=value`
 lines and ini root keys + `[section]`s (arrays as JSON strings; both
 must read back — see "env and ini"); csv
-is `key,value,format` rows with concrete ids (arrays/objects as one
+is `key,value,format` rows with concrete ids (arrays and null as one
 `json` cell; typed text values as `str` — the CLI works from the
-serialized tree). Errors go to stderr with exit 1.
+serialized tree); toml omits null keys (toml has no null) and errors,
+naming the key, on a null inside an array. Errors go to stderr with exit 1.
 
 ## Development workflow (TDD — strictly in this order)
 

@@ -31,6 +31,36 @@ use std::path::Path;
 
 use crate::{Error, Format, Options, Result, TableLayout, Value};
 
+/// Whether `format`'s Cargo feature (named like its id) is compiled in.
+pub(crate) fn is_compiled(format: Format) -> bool {
+    match format {
+        Format::Json => cfg!(feature = "json"),
+        Format::Jsonc => cfg!(feature = "jsonc"),
+        Format::Yaml => cfg!(feature = "yaml"),
+        Format::Toml => cfg!(feature = "toml"),
+        Format::Ini => cfg!(feature = "ini"),
+        Format::Cnf => cfg!(feature = "cnf"),
+        Format::Env => cfg!(feature = "env"),
+        Format::Csv => cfg!(feature = "csv"),
+        Format::Excel => cfg!(feature = "excel"),
+        Format::Ods => cfg!(feature = "ods"),
+    }
+}
+
+/// A text file's content, without a leading UTF-8 byte-order mark.
+pub(crate) fn read_text(path: &Path) -> Result<String> {
+    let text = std::fs::read_to_string(path).map_err(crate::error::io(path))?;
+    Ok(match text.strip_prefix('\u{feff}') {
+        Some(rest) => rest.to_owned(),
+        None => text,
+    })
+}
+
+/// In-code text without a leading UTF-8 byte-order mark.
+pub(crate) fn strip_bom(text: &str) -> &str {
+    text.strip_prefix('\u{feff}').unwrap_or(text)
+}
+
 /// Binary formats parse from the path, never from text — the loader
 /// calls [`parse_binary`] for them instead of reading the file to a
 /// string, and [`parse`] (the text entry, which string sources use)
@@ -83,7 +113,7 @@ pub(crate) fn parse_table_file(
                      did you mean a layout — kv, db?)"
                 )));
             }
-            let text = std::fs::read_to_string(path).map_err(crate::error::io(path))?;
+            let text = read_text(path)?;
             let mut value = csv::parse(&text, layout, path, options)?;
             strip_commented_data_keys(&mut value, options);
             Ok(value)
