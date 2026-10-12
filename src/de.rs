@@ -64,6 +64,11 @@ macro_rules! coerce {
             match self.0 {
                 Value::String(s) => match crate::format::table::scalar(&s, $ty) {
                     Some(value) => ValueDeserializer(value).deserialize_any(visitor),
+                    None if s.is_empty() => Err(de::Error::custom(format!(
+                        "the value is empty, which is not a valid {} — to leave the \
+                         field unset, remove the line (an Option field is then None)",
+                        $ty
+                    ))),
                     None => Err(de::Error::custom(format!("'{s}' is not a valid {}", $ty))),
                 },
                 other => ValueDeserializer(other).deserialize_any(visitor),

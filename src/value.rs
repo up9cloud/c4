@@ -6,7 +6,11 @@
 use std::collections::BTreeMap;
 
 /// Dynamic config value.
+///
+/// Non-exhaustive: new variants may come without a breaking release, so
+/// a `match` needs a `_` arm.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Value {
     Null,
     Bool(bool),
@@ -172,6 +176,35 @@ impl Value {
         }
     }
 
+    /// Convert this value into any serde type, with the same rules as
+    /// [`Loader::load`](crate::Loader::load): strings coerce into numbers
+    /// and bools (and back), and an error names the key path. It consumes
+    /// the value; take one section of a loaded config with `.clone()`:
+    ///
+    /// ```
+    /// #[derive(serde::Deserialize)]
+    /// struct Db {
+    ///     port: u16,
+    /// }
+    ///
+    /// # fn main() -> Result<(), c4::Error> {
+    /// let config = c4::Value::from(std::collections::BTreeMap::from([(
+    ///     "db".to_owned(),
+    ///     c4::Value::from(std::collections::BTreeMap::from([(
+    ///         "port".to_owned(),
+    ///         c4::Value::from("5432"),
+    ///     )])),
+    /// )]));
+    /// let db: Db = config["db"].clone().into_typed()?;
+    /// assert_eq!(db.port, 5432);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn into_typed<T: serde::de::DeserializeOwned>(self) -> crate::Result<T> {
+        T::deserialize(crate::de::ValueDeserializer::new(self))
+            .map_err(|e| crate::Error::Deserialize(e.to_string()))
+    }
+
     /// The address of an [`Ipv4`](Value::Ipv4) or [`Ipv6`](Value::Ipv6)
     /// value; `None` for anything else, a string that looks like one
     /// included.
@@ -245,6 +278,137 @@ impl Value {
 
 /// `value["key"]` — yields `Value::Null` for missing keys or non-objects,
 /// so lookups chain without panicking: `value["db"]["port"].as_u64()`.
+// Conversions into a `Value`, for custom formats, tests and overrides.
+macro_rules! from_scalar {
+    ($($ty:ty => $variant:ident via $conv:ty),* $(,)?) => {$(
+        impl From<$ty> for Value {
+            fn from(v: $ty) -> Value {
+                Value::$variant(<$conv>::from(v))
+            }
+        }
+    )*};
+}
+
+from_scalar! {
+    bool => Bool via bool,
+    i8 => Int via i64, i16 => Int via i64, i32 => Int via i64, i64 => Int via i64,
+    u8 => Uint via u64, u16 => Uint via u64, u32 => Uint via u64, u64 => Uint via u64,
+    i128 => Int128 via i128, u128 => Uint128 via u128,
+    f32 => Float via f64, f64 => Float via f64,
+    String => String via String,
+}
+
+impl From<&str> for Value {
+    fn from(v: &str) -> Value {
+        Value::String(v.to_owned())
+    }
+}
+
+impl<T: Into<Value>> From<Option<T>> for Value {
+    /// `None` is [`Value::Null`].
+    fn from(v: Option<T>) -> Value {
+        v.map_or(Value::Null, Into::into)
+    }
+}
+
+impl<T: Into<Value>> From<Vec<T>> for Value {
+    fn from(v: Vec<T>) -> Value {
+        Value::Array(v.into_iter().map(Into::into).collect())
+    }
+}
+
+impl From<BTreeMap<String, Value>> for Value {
+    fn from(v: BTreeMap<String, Value>) -> Value {
+        Value::Object(v)
+    }
+}
+
+// Comparisons with plain values, both ways, through the `as_*` accessors:
+// text matches any typed text, integers match across widths, and a float
+// matches any number.
+macro_rules! eq_via {
+    ($($ty:ty => |$v:ident, $o:ident| $cmp:expr),* $(,)?) => {$(
+        impl PartialEq<$ty> for Value {
+            fn eq(&self, other: &$ty) -> bool {
+                let ($v, $o) = (self, other);
+                $cmp
+            }
+        }
+        impl PartialEq<Value> for $ty {
+            fn eq(&self, other: &Value) -> bool {
+                other == self
+            }
+        }
+    )*};
+}
+
+eq_via! {
+    str => |v, o| v.as_str() == Some(o),
+    &str => |v, o| v.as_str() == Some(*o),
+    String => |v, o| v.as_str() == Some(o.as_str()),
+    bool => |v, o| v.as_bool() == Some(*o),
+    i32 => |v, o| v.as_i128() == Some(i128::from(*o)),
+    i64 => |v, o| v.as_i128() == Some(i128::from(*o)),
+    u32 => |v, o| v.as_i128() == Some(i128::from(*o)),
+    u64 => |v, o| v.as_i128() == Some(i128::from(*o)),
+    f64 => |v, o| v.as_f64() == Some(*o),
+}
+
+/// Compact JSON: typed values print as their text, non-finite floats as
+/// `null` (like any JSON serializer). Use [`Value::as_str`] for a string's
+/// raw text.
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn text(f: &mut std::fmt::Formatter<'_>, s: &str) -> std::fmt::Result {
+            f.write_str("\"")?;
+            for c in s.chars() {
+                match c {
+                    '"' => f.write_str("\\\"")?,
+                    '\\' => f.write_str("\\\\")?,
+                    '\n' => f.write_str("\\n")?,
+                    '\r' => f.write_str("\\r")?,
+                    '\t' => f.write_str("\\t")?,
+                    c if c < ' ' => write!(f, "\\u{:04x}", c as u32)?,
+                    c => write!(f, "{c}")?,
+                }
+            }
+            f.write_str("\"")
+        }
+        match self {
+            Value::Null => f.write_str("null"),
+            Value::Bool(b) => write!(f, "{b}"),
+            Value::Int(i) => write!(f, "{i}"),
+            Value::Uint(u) => write!(f, "{u}"),
+            Value::Int128(i) => write!(f, "{i}"),
+            Value::Uint128(u) => write!(f, "{u}"),
+            Value::Float(x) if x.is_finite() => write!(f, "{x:?}"),
+            Value::Float(_) => f.write_str("null"),
+            Value::Array(items) => {
+                f.write_str("[")?;
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(",")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                f.write_str("]")
+            }
+            Value::Object(map) => {
+                f.write_str("{")?;
+                for (i, (key, value)) in map.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(",")?;
+                    }
+                    text(f, key)?;
+                    write!(f, ":{value}")?;
+                }
+                f.write_str("}")
+            }
+            other => text(f, other.as_str().unwrap_or_default()),
+        }
+    }
+}
+
 impl std::ops::Index<&str> for Value {
     type Output = Value;
 

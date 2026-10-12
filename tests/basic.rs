@@ -128,6 +128,111 @@ fn strings_coerce_into_typed_fields() {
 }
 
 #[test]
+fn value_conversions_comparisons_and_display() {
+    use c4::Value;
+    use std::collections::BTreeMap;
+
+    // From: build values the short way
+    assert_eq!(Value::from("c4"), Value::String("c4".into()));
+    assert_eq!(Value::from(String::from("c4")), Value::String("c4".into()));
+    assert_eq!(Value::from(true), Value::Bool(true));
+    assert_eq!(Value::from(8080_u16), Value::Uint(8080));
+    assert_eq!(Value::from(-3_i32), Value::Int(-3));
+    assert_eq!(Value::from(i128::MAX), Value::Int128(i128::MAX));
+    assert_eq!(Value::from(1.5_f64), Value::Float(1.5));
+    assert_eq!(Value::from(None::<u8>), Value::Null);
+    assert_eq!(Value::from(Some("x")), Value::String("x".into()));
+    assert_eq!(
+        Value::from(vec![1_i64, 2]),
+        Value::Array(vec![Value::Int(1), Value::Int(2)])
+    );
+    let object = Value::from(BTreeMap::from([("port".to_owned(), Value::from(8080_u16))]));
+    assert_eq!(object["port"], Value::Uint(8080));
+
+    // comparisons follow the as_* accessors, both directions
+    assert!(object["port"] == 8080);
+    assert!(8080_u64 == object["port"]);
+    assert!(object["port"] == 8080.0);
+    assert!(object["port"] != 80);
+    let name = Value::from("c4");
+    let owned = String::from("c4");
+    assert!(name == "c4");
+    assert!("c4" == name);
+    assert!(name == owned);
+    let date = Value::DateTime("2024-01-02".into());
+    assert!(date == "2024-01-02"); // typed text too
+    let flag = Value::from(true);
+    assert!(flag == true);
+    assert!(Value::Null != "null");
+
+    // Display: compact JSON
+    let value = Value::from(BTreeMap::from([
+        (
+            "a".to_owned(),
+            Value::from(vec![Value::from(1_i64), Value::Null]),
+        ),
+        ("b".to_owned(), Value::from("say \"hi\"\n")),
+        ("c".to_owned(), Value::Float(f64::NAN)),
+        ("d".to_owned(), Value::Ipv4("10.0.0.1".into())),
+    ]));
+    assert_eq!(
+        value.to_string(),
+        r#"{"a":[1,null],"b":"say \"hi\"\n","c":null,"d":"10.0.0.1"}"#
+    );
+    assert_eq!(Value::Float(1.0).to_string(), "1.0");
+}
+
+#[test]
+fn into_typed_converts_a_loaded_value() {
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct Db {
+        host: String,
+        port: u16,
+    }
+    let config: c4::Value = loader(vec![
+        (serde_json::json!({"db": {"host": "a", "port": "5432"}, "port": 8080}),).into(),
+    ])
+    .load()
+    .unwrap();
+    // a section: index, clone, convert — same coercions as load
+    let db: Db = config["db"].clone().into_typed().unwrap();
+    assert_eq!(
+        db,
+        Db {
+            host: "a".into(),
+            port: 5432
+        }
+    );
+    let port: u16 = config["port"].clone().into_typed().unwrap();
+    assert_eq!(port, 8080);
+    // a failure names the key path inside the converted value
+    let err = config
+        .into_typed::<std::collections::BTreeMap<String, Db>>()
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "deserialize error: port: invalid type: integer `8080`, expected struct Db"
+    );
+}
+
+#[test]
+fn an_empty_value_says_how_to_leave_a_field_unset() {
+    #[derive(serde::Deserialize, Debug)]
+    #[allow(dead_code)]
+    struct Cfg {
+        port: Option<u16>,
+    }
+    let err = loader(vec![(serde_json::json!({"port": ""}),).into()])
+        .load::<Cfg>()
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "deserialize error: port: the value is empty, which is not a valid u16 \
+         — to leave the field unset, remove the line (an Option field is then None)"
+    );
+}
+
+#[test]
 fn load_keeps_typed_variants() {
     // load::<Value>() hands the merged tree over as is — no serde round
     // trip that would flatten typed variants into strings

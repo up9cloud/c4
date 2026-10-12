@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 
 use crate::trace::{SourceRef, Trace, TracedValue, Warning};
-use crate::{Error, Format, FormatKind, Options, Order, Result, Source, Value, de, error, format};
+use crate::{Error, Format, FormatKind, Options, Order, Result, Source, Value, error, format};
 
 /// Loads and merges the config sources named by its [`Options`].
 #[derive(Debug, Clone, Default)]
@@ -44,7 +44,12 @@ impl Loader {
     /// shortest round-trip form, so `1.0` stays `"1.0"`).
     ///
     /// Every [`Error::Deserialize`] names the key path it failed at —
-    /// `db.password: invalid type: …`, `items[2].id: …`.
+    /// `db.password: invalid type: …`, `items[2].id: …`. An empty value
+    /// (`PORT=`) cannot fill a number or bool field, not even an `Option`
+    /// one (serde picks `None` or `Some` before it sees the inner type);
+    /// the error says to remove the line instead.
+    ///
+    /// To type one part of a loaded [`Value`], use [`Value::into_typed`].
     ///
     /// ```
     /// #[derive(serde::Deserialize)]
@@ -70,8 +75,7 @@ impl Loader {
     /// input was not used (a skipped cnf `!include`, for instance).
     pub fn load<T: DeserializeOwned>(&self) -> Result<T> {
         let (value, _warnings) = self.run::<Value>()?;
-        T::deserialize(de::ValueDeserializer::new(value))
-            .map_err(|e| Error::Deserialize(e.to_string()))
+        value.into_typed()
     }
 
     /// Like [`Loader::load`], but keeps per-leaf provenance and the

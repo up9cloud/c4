@@ -26,7 +26,11 @@ pub(crate) fn is_commented(name: &str) -> bool {
 /// The variants always exist; whether a format can actually be parsed
 /// depends on the matching Cargo feature. Which extensions a format reads
 /// is part of [`FormatSpec`].
+///
+/// Non-exhaustive: new variants may come without a breaking release, so
+/// a `match` needs a `_` arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Format {
     Json,
     Jsonc,

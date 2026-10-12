@@ -12,7 +12,11 @@ use crate::Value;
 ///
 /// Source labels exist for debugging and testing — they are not config
 /// data, and no config semantics should be built on top of them.
+///
+/// Non-exhaustive: new variants may come without a breaking release, so
+/// a `match` needs a `_` arm.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SourceRef {
     /// The file path as the loader saw it (source path joined with the
     /// relative path inside a folder source).

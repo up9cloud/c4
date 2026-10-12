@@ -6,7 +6,11 @@ use std::path::PathBuf;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Errors produced while scanning, parsing, merging or deserializing.
+///
+/// Non-exhaustive: new variants may come without a breaking release, so
+/// a `match` needs a `_` arm.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// Reading `path` (a file, or a folder while scanning) failed.
     Io {

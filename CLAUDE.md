@@ -60,6 +60,11 @@ the statement; the crate docs do not repeat it.
   `trace`; new capabilities become new fields.
 - **One generic `load<T>`**, no `load_as` — the annotated type picks
   dynamic `Value` or typed config. One free function, `c4::load(path)`.
+- **`Value::into_typed` is the one way to type part of a loaded value**
+  (owner, 2026-10-12): a single consuming method, `.clone()` to take a
+  section — no borrowing twin. `.into()` cannot do it (`From` is
+  infallible) and `try_into()` cannot either: a blanket `TryFrom<Value>`
+  for every serde type breaks the orphan rule.
 - **No dot-path getter** (`get("a.b.c")`, decided 2026-07-12): chained
   `Index` already yields `Value::Null` at any missing step. node-config's
   `get` exists only because JS lacked optional chaining.
@@ -76,6 +81,11 @@ the statement; the crate docs do not repeat it.
   the message points at string sources.
 - Unknown ids (format, layout, order) and a layout on a non-table format
   **panic at conversion** — config-time code (owner, 2026-07-12).
+- **`Error`, `Format`, `Value` and `SourceRef` are `#[non_exhaustive]`**
+  (owner, 2026-10-12, in 0.6.0): new formats, typed values and errors
+  are expected, and each used to break exhaustive matches (`Format::Cnf`
+  did). `Options` must not be: `..Default::default()` literals need an
+  exhaustive struct.
 - `Error::Unsupported` is kept although nothing constructs it today
   (owner, 2026-10-12: expected to be needed again).
 - **Hot reload is not a feature** (2026-07): watching is policy-heavy and
@@ -209,7 +219,10 @@ env and cnf — all strings — load into typed structs; a number or bool
 reaching a string field becomes its text (floats via `{:?}`, so `1.0`
 keeps its `.0`). Only typed targets coerce; `deserialize_any` keeps the
 value. Deserialize errors carry the key path, built in `src/de.rs` as
-errors bubble out of maps and sequences.
+errors bubble out of maps and sequences. An empty string cannot become
+`None` for `Option<u16>` only — serde's `deserialize_option` decides
+None/Some before the inner type is known — so it stays an error whose
+message says to remove the line (owner, 2026-10-12).
 
 ### Spreadsheets
 
