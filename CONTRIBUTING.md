@@ -89,7 +89,9 @@ passes, publishes to crates.io via Trusted Publishing (OIDC — there is no
 token to manage).
 
 1. Commit all your changes first — a clean working tree keeps the tag
-   accurate.
+   accurate. Run `rustup update stable` and clippy before tagging: CI
+   uses the latest stable, whose new lints an older local toolchain
+   misses (that is how v0.6.0's first CI run failed).
 2. Bump `version` in `Cargo.toml` (the crates.io package is `c4-config`;
    the lib/binary stay `c4`). `cargo publish` uses this version, so it
    must not already be published. In `CHANGELOG.md`, replace the
