@@ -2,7 +2,7 @@
 
 Versions before 0.6.0 have no entries here; see the git tags.
 
-## 0.6.0 — unreleased
+## 0.6.0 — 2026-10-12
 
 ### Upgrading from 0.5
 
