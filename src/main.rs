@@ -1,4 +1,4 @@
-//! c4 CLI — spec: CLAUDE.md "CLI" (README.md has the short form). Built
+//! c4 CLI — flags in `USAGE` below, output rules in CLAUDE.md. Built
 //! only with `--features cli`.
 //!
 //! Loads config sources (default: ./config) and writes the merged result
@@ -270,10 +270,9 @@ fn resolve_format(
     if let Some(ext) = out_path
         .and_then(|p| p.extension())
         .and_then(|e| e.to_str())
+        && let Some(format) = OutFormat::from_extension(&ext.to_lowercase())
     {
-        if let Some(format) = OutFormat::from_extension(&ext.to_lowercase()) {
-            return Ok(format);
-        }
+        return Ok(format);
     }
     Ok(OutFormat::Debug)
 }

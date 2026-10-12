@@ -13,9 +13,14 @@ pub enum Value {
     Int(i64),
     Uint(u64),
     /// 128-bit signed — only from the table `i128` type (never `auto`,
-    /// which stops at `i64`/`u64`/`f64`).
+    /// which stops at `i64`/`u64`/`f64`). Serializes as a plain number
+    /// when it fits `i64` or `u64`, otherwise as its decimal **string**
+    /// (JSON has no wider integer); [`format_id`](Value::format_id) still reports
+    /// `i128`.
     Int128(i128),
-    /// 128-bit unsigned — only from the table `u128` type.
+    /// 128-bit unsigned — only from the table `u128` type. Serializes as
+    /// a plain number when it fits `u64`, otherwise as its decimal
+    /// **string**; [`format_id`](Value::format_id) still reports `u128`.
     Uint128(u128),
     Float(f64),
     String(String),

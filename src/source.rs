@@ -38,6 +38,10 @@ pub enum Source {
     /// A filesystem path — a folder whose files deep-merge, or a single
     /// file. Which one is decided at load time (`is_dir` / `is_file`); a
     /// path that is neither is [`Error::NotFound`](crate::Error::NotFound).
+    /// Inside a folder, a file whose extension no format in
+    /// [`Options::formats`](crate::Options::formats) claims is skipped;
+    /// a single-file source naming such a file is
+    /// [`Error::Parse`](crate::Error::Parse) — you asked for that file.
     Path(PathBuf),
     /// An in-code string; its format may be a built-in or a
     /// [`CustomFormat`](crate::CustomFormat) (no `formats` registration

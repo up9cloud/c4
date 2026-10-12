@@ -642,7 +642,12 @@ pub struct Options {
     ///   deep-merges into one element and indexes may arrive in any
     ///   order. Skipped indexes leave `Null` gaps — `a[1]` + `a[4]`
     ///   give a five-element array with nulls at 0, 2 and 3;
-    ///   deserialize such arrays as `Vec<Option<T>>`.
+    ///   deserialize such arrays as `Vec<Option<T>>`. Every skipped slot
+    ///   is allocated, so a typo must not cost gigabytes: one index may
+    ///   skip at most 10000 unset slots past the array's current end
+    ///   (`a[1]`, `a[100]`, `a[10002]` is fine), and no index may exceed
+    ///   1000000. Either is an error — `Error::Table` at its row,
+    ///   `Error::Parse` naming the env line or the sheet.
     ///
     /// Suffixes also chain through the dotted path (`a[0].b[].c`) and
     /// work on keys without dots (`ports[]`). The expansion happens

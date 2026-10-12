@@ -88,8 +88,6 @@ docs, with runnable examples:
 
 **📖 [docs.rs/c4-config](https://docs.rs/c4-config)**
 
-(`CLAUDE.md` in the repo is the exhaustive, normative spec.)
-
 ## CLI
 
 The `cli` feature builds a `c4` binary (all formats and value parsers)

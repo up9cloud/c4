@@ -79,7 +79,8 @@ fn kv(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
             .ok_or_else(|| table_err(path, row, "missing value cell".into()))?;
         let declared = cells.get(2).map(|s| s.trim()).unwrap_or("");
         let value = convert(raw, declared, path, row, options)?;
-        super::insert_key(&mut root, key, value, options.dot_key);
+        super::insert_key(&mut root, key, value, options.dot_key)
+            .map_err(|message| table_err(path, row, message))?;
     }
     Ok(root)
 }
@@ -145,7 +146,8 @@ fn db(rows: Vec<Vec<String>>, path: &Path, options: &Options) -> Result<Value> {
             };
             let declared = types.get(column).map(String::as_str).unwrap_or("");
             let value = convert(raw, declared, path, row, options)?;
-            super::insert_key(&mut record, key, value, options.dot_key);
+            super::insert_key(&mut record, key, value, options.dot_key)
+                .map_err(|message| table_err(path, row, message))?;
         }
         records.push(record);
     }
@@ -297,39 +299,11 @@ fn convert(raw: &str, declared: &str, path: &Path, row: usize, options: &Options
     // every "the value does not fit its declared format" failure shares
     // this one message shape
     let bad = || fail(format!("'{raw}' is not a valid {ty}"));
-    let int = |min: i64, max: i64| {
-        int_literal(raw)
-            .filter(|v| (min..=max).contains(v))
-            .map(Value::Int)
-            .ok_or_else(&bad)
-    };
-    let uint = |max: u64| {
-        uint_literal(raw)
-            .filter(|v| *v <= max)
-            .map(Value::Uint)
-            .ok_or_else(&bad)
-    };
+    if SCALAR_IDS.contains(&ty) {
+        return scalar(raw, ty).ok_or_else(bad);
+    }
 
     match ty {
-        "i8" => int(i8::MIN.into(), i8::MAX.into()),
-        "i16" => int(i16::MIN.into(), i16::MAX.into()),
-        "i32" => int(i32::MIN.into(), i32::MAX.into()),
-        "i64" => int(i64::MIN, i64::MAX),
-        "u8" => uint(u8::MAX.into()),
-        "u16" => uint(u16::MAX.into()),
-        "u32" => uint(u32::MAX.into()),
-        "u64" => uint(u64::MAX),
-        // 128-bit is explicit-only — auto never widens past i64/u64/f64
-        "i128" => int128_literal(raw).map(Value::Int128).ok_or_else(&bad),
-        "u128" => uint128_literal(raw).map(Value::Uint128).ok_or_else(&bad),
-        "f32" => float_literal(raw)
-            .map(|f| Value::Float(f64::from(f as f32)))
-            .ok_or_else(&bad),
-        "f64" => float_literal(raw).map(Value::Float).ok_or_else(&bad),
-        // explicit bool accepts the loose token set; auto stays strict
-        "bool" => parse_bool(raw)
-            .map(Value::Bool)
-            .ok_or_else(|| fail(format!("'{raw}' is not a valid bool"))),
         "str" => Ok(Value::String(raw.to_owned())),
         // without its feature each of these ids is cfg'd out of the match
         // and lands on the unknown-type error below; the shape rules live
@@ -389,6 +363,37 @@ fn convert(raw: &str, declared: &str, path: &Path, row: usize, options: &Options
         #[cfg(feature = "jsonc")]
         "jsonc" => super::jsonc::parse(raw, path).map_err(|_| bad()),
         _ => Err(fail(format!("unknown or disabled type '{declared}'"))),
+    }
+}
+
+/// The integer, float and bool type ids — the ones [`scalar`] parses.
+pub(crate) const SCALAR_IDS: &[&str] = &[
+    "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "f32", "f64", "bool",
+];
+
+/// Parse `raw` under one of the [`SCALAR_IDS`] (canonical, no aliases).
+/// Shared by explicit table cells and the deserializer, which coerces a
+/// string into a typed field with the same rules.
+pub(crate) fn scalar(raw: &str, ty: &str) -> Option<Value> {
+    let int = |min: i64, max: i64| int_literal(raw).filter(|v| (min..=max).contains(v));
+    let uint = |max: u64| uint_literal(raw).filter(|v| *v <= max);
+    match ty {
+        "i8" => int(i8::MIN.into(), i8::MAX.into()).map(Value::Int),
+        "i16" => int(i16::MIN.into(), i16::MAX.into()).map(Value::Int),
+        "i32" => int(i32::MIN.into(), i32::MAX.into()).map(Value::Int),
+        "i64" => int(i64::MIN, i64::MAX).map(Value::Int),
+        "u8" => uint(u8::MAX.into()).map(Value::Uint),
+        "u16" => uint(u16::MAX.into()).map(Value::Uint),
+        "u32" => uint(u32::MAX.into()).map(Value::Uint),
+        "u64" => uint(u64::MAX).map(Value::Uint),
+        // 128-bit is explicit-only — auto never widens past i64/u64/f64
+        "i128" => int128_literal(raw).map(Value::Int128),
+        "u128" => uint128_literal(raw).map(Value::Uint128),
+        "f32" => float_literal(raw).map(|f| Value::Float(f64::from(f as f32))),
+        "f64" => float_literal(raw).map(Value::Float),
+        // the loose token set; auto stays strict
+        "bool" => parse_bool(raw).map(Value::Bool),
+        _ => None,
     }
 }
 

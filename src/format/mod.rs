@@ -83,7 +83,7 @@ pub(crate) fn parse_table_file(
                      did you mean a layout — kv, db?)"
                 )));
             }
-            let text = std::fs::read_to_string(path).map_err(Error::Io)?;
+            let text = std::fs::read_to_string(path).map_err(crate::error::io(path))?;
             let mut value = csv::parse(&text, layout, path, options)?;
             strip_commented_data_keys(&mut value, options);
             Ok(value)
@@ -134,7 +134,7 @@ pub(crate) fn parse(
         #[cfg(feature = "cnf")]
         Format::Cnf => cnf::parse(text, path, warnings),
         #[cfg(feature = "env")]
-        Format::Env => env::parse(text, options),
+        Format::Env => env::parse(text, path, options),
         #[cfg(feature = "csv")]
         Format::Csv => csv::parse(text, layout, path, options),
         #[allow(unreachable_patterns)]
@@ -221,25 +221,42 @@ fn split_segment(segment: &str) -> Option<(&str, Vec<ArrayPart>)> {
 /// [`split_segment`]). This walks the tree built so far instead of
 /// expand-then-merge because append has to see the existing array.
 /// With `dot_key` off the whole key is one literal object key.
-pub(crate) fn insert_key(root: &mut Value, key: &str, value: Value, dot_key: bool) {
+///
+/// The error is a bare message for the caller to locate (row, line,
+/// sheet): an index past [`MAX_ARRAY_GAP`] or [`MAX_ARRAY_INDEX`].
+pub(crate) fn insert_key(
+    root: &mut Value,
+    key: &str,
+    value: Value,
+    dot_key: bool,
+) -> std::result::Result<(), String> {
     if dot_key {
-        insert_segments(root, key.split('.'), value);
+        insert_segments(root, key, key.split('.'), value)
     } else {
         deep_merge(
             root,
             Value::Object(std::collections::BTreeMap::from([(key.to_owned(), value)])),
         );
+        Ok(())
     }
 }
 
+/// Every skipped slot of a `name[<int>]` index is allocated, so one
+/// typo'd cell must not cost gigabytes: an index may skip at most this
+/// many unset slots past the array's current end …
+pub(crate) const MAX_ARRAY_GAP: usize = 10_000;
+/// … and may never exceed this.
+pub(crate) const MAX_ARRAY_INDEX: usize = 1_000_000;
+
 fn insert_segments<'a>(
     slot: &mut Value,
+    key: &str,
     mut segments: impl Iterator<Item = &'a str>,
     value: Value,
-) {
+) -> std::result::Result<(), String> {
     let Some(segment) = segments.next() else {
         deep_merge(slot, value);
-        return;
+        return Ok(());
     };
     // a segment's base name lives in an object; on a kind collision the
     // later row wins (merge rule 2), so anything else is replaced
@@ -264,6 +281,17 @@ fn insert_segments<'a>(
         };
         let index = match part {
             ArrayPart::Append => items.len(),
+            ArrayPart::Index(index) if index > MAX_ARRAY_INDEX => {
+                return Err(format!(
+                    "array index {index} in '{key}' is above the limit ({MAX_ARRAY_INDEX})"
+                ));
+            }
+            ArrayPart::Index(index) if index.saturating_sub(items.len()) > MAX_ARRAY_GAP => {
+                return Err(format!(
+                    "array index {index} in '{key}' skips {} unset slots (limit {MAX_ARRAY_GAP})",
+                    index - items.len()
+                ));
+            }
             ArrayPart::Index(index) => index,
         };
         while items.len() <= index {
@@ -271,7 +299,7 @@ fn insert_segments<'a>(
         }
         target = &mut items[index];
     }
-    insert_segments(target, segments, value);
+    insert_segments(target, key, segments, value)
 }
 
 /// Drop commented-out data keys (`#…`, `_…`) from a parse result when

@@ -84,7 +84,7 @@ fn parse_workbook(
             });
         }
         let value = parse_sheet(&mut workbook, name, layout, path, options)?;
-        return Ok(sheet_key(name, value, options));
+        return sheet_key(name, value, path, options);
     }
 
     // every non-ignored sheet parses; a workbook with none contributes
@@ -102,7 +102,8 @@ fn parse_workbook(
         let mut root = Value::Object(BTreeMap::new());
         for name in names {
             let value = parse_sheet(&mut workbook, &name, layout, path, options)?;
-            super::insert_key(&mut root, &name, value, options.dot_key);
+            super::insert_key(&mut root, &name, value, options.dot_key)
+                .map_err(|message| sheet_name_err(path, &name, message))?;
         }
         Ok(root)
     } else {
@@ -127,10 +128,18 @@ fn parse_workbook(
 /// One sheet's value under its sheet name, inserted the way every data
 /// key is — so `dot_key` expands a dotted sheet name (`a.b` →
 /// `{a: {b: …}}`) and the array suffixes work.
-fn sheet_key(name: &str, value: Value, options: &Options) -> Value {
+fn sheet_key(name: &str, value: Value, path: &Path, options: &Options) -> Result<Value> {
     let mut root = Value::Object(BTreeMap::new());
-    super::insert_key(&mut root, name, value, options.dot_key);
-    root
+    super::insert_key(&mut root, name, value, options.dot_key)
+        .map_err(|message| sheet_name_err(path, name, message))?;
+    Ok(root)
+}
+
+fn sheet_name_err(path: &Path, name: &str, message: String) -> Error {
+    Error::Parse {
+        path: path.to_path_buf(),
+        message: format!("sheet '{name}': {message}"),
+    }
 }
 
 /// Deep-merge `incoming` into `target`, mirroring the loader's merge

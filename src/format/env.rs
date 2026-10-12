@@ -1,13 +1,16 @@
 //! env files — `KEY=VALUE` lines, `#` comments, optional `export` prefix,
-//! single/double quotes stripped. All values are strings; no variable
-//! interpolation. `dot_key` applies to the keys.
+//! dotenv-style values: a quoted value ends at its closing quote, and in
+//! an unquoted one `#` starts a comment only after whitespace. All values
+//! are strings; no variable interpolation. `dot_key` applies to the keys.
 
-use crate::{Options, Result, Value};
+use std::path::Path;
 
-pub(crate) fn parse(text: &str, options: &Options) -> Result<Value> {
+use crate::{Error, Options, Result, Value};
+
+pub(crate) fn parse(text: &str, path: &Path, options: &Options) -> Result<Value> {
     let mut root = Value::Object(Default::default());
 
-    for line in text.lines() {
+    for (index, line) in text.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
@@ -20,26 +23,30 @@ pub(crate) fn parse(text: &str, options: &Options) -> Result<Value> {
         if key.is_empty() {
             continue;
         }
-        let value = unquote(value.trim());
         super::insert_key(
             &mut root,
             key,
-            Value::String(value.to_owned()),
+            Value::String(value_text(value).to_owned()),
             options.dot_key,
-        );
+        )
+        .map_err(|message| Error::Parse {
+            path: path.to_path_buf(),
+            message: format!("line {}: {message}", index + 1),
+        })?;
     }
     Ok(root)
 }
 
-/// Strip one pair of matching single or double quotes.
-fn unquote(value: &str) -> &str {
-    let bytes = value.as_bytes();
-    if bytes.len() >= 2
-        && (bytes[0] == b'"' || bytes[0] == b'\'')
-        && bytes[bytes.len() - 1] == bytes[0]
+fn value_text(raw: &str) -> &str {
+    let trimmed = raw.trim_start();
+    if let Some(quote @ ('"' | '\'')) = trimmed.chars().next()
+        && let Some(end) = trimmed[1..].find(quote)
     {
-        &value[1..value.len() - 1]
-    } else {
-        value
+        return &trimmed[1..1 + end];
     }
+    let end = raw
+        .char_indices()
+        .find(|&(at, c)| c == '#' && raw[..at].ends_with(char::is_whitespace))
+        .map_or(raw.len(), |(at, _)| at);
+    raw[..end].trim()
 }

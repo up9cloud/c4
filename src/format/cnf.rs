@@ -1,6 +1,7 @@
 //! cnf — the INI-like option files with no spec (`my.cnf`, `openssl.cnf`).
 //! Unlike the strict ini parser, this one accepts the union of those
-//! dialects; the rules are in the crate docs and CLAUDE.md.
+//! dialects, following MySQL where they conflict; behavior is in the
+//! crate docs, the reasons in CLAUDE.md.
 
 use std::collections::BTreeMap;
 use std::path::Path;

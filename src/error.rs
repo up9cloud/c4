@@ -8,14 +8,18 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors produced while scanning, parsing, merging or deserializing.
 #[derive(Debug)]
 pub enum Error {
-    /// Underlying I/O failure.
-    Io(std::io::Error),
+    /// Reading `path` (a file, or a folder while scanning) failed.
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     /// A source path does not exist.
     NotFound(PathBuf),
     /// A file failed to parse.
     Parse { path: PathBuf, message: String },
-    /// A table (csv) cell failed to convert. `row` is 1-based; the header
-    /// row, when enabled, counts as row 1.
+    /// A table row failed to convert (csv, a spreadsheet sheet, or rows
+    /// handed to [`parse_table`](crate::parse_table)). `row` is 1-based —
+    /// for a sheet, the real spreadsheet row number.
     Table {
         path: PathBuf,
         row: usize,
@@ -30,7 +34,7 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "io error: {e}"),
+            Error::Io { path, source } => write!(f, "{}: {source}", path.display()),
             Error::NotFound(p) => write!(f, "source not found: {}", p.display()),
             Error::Parse { path, message } => write!(f, "{}: {message}", path.display()),
             Error::Table { path, row, message } => {
@@ -42,4 +46,19 @@ impl std::fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Io { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// The `map_err` adapter for an I/O call on `path`.
+pub(crate) fn io(path: &std::path::Path) -> impl FnOnce(std::io::Error) -> Error + '_ {
+    move |source| Error::Io {
+        path: path.to_path_buf(),
+        source,
+    }
+}

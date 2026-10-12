@@ -2,7 +2,7 @@
 name = "c4-config"
 version = "0.5.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Load a folder of config files (jsonc/yaml/json/toml/ini/cnf/env/csv/xlsx/ods) into one deep-merged value"
 license = "MIT"
 repository = "https://github.com/up9cloud/c4"
@@ -15,8 +15,7 @@ jsonc-parser = { version = "0.26", optional = true }
 serde_yaml = { version = "0.9", optional = true }
 toml = { version = "0.8", optional = true }
 csv = { version = "1", optional = true }
-# pinned to 0.35: calamine 0.36 requires rustc 1.88, past our MSRV (1.85)
-calamine = { version = "0.35", optional = true }
+calamine = { version = "0.36", optional = true }
 
 [lib]
 name = "c4"

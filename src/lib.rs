@@ -94,6 +94,9 @@
 //!    by format: `app.json` and `app.yml` sort by name, so `app.yml` loads
 //!    later and wins. Prefix filenames (`00_a.json`, `01_a.yml`) for
 //!    explicit control.
+//! 4. An empty result — an empty file or string, a workbook with no
+//!    sheets left, a `(value,)` override that serializes to null —
+//!    contributes nothing: it never clears what earlier sources set.
 //!
 //! A [`CustomFormat`] is an id, the extensions it claims, and a parser
 //! callback. It goes into `Options.formats` like any built-in — one list,
@@ -178,6 +181,12 @@
 //! | `csv`   | `.csv`             | `csv`   |
 //! | `excel` | `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | `excel` |
 //! | `ods`   | `.ods`             | `ods`   |
+//!
+//! `env` follows the dotenv conventions: `export` is optional, a quoted
+//! value ends at its closing quote, and in an unquoted value `#` starts a
+//! comment only after whitespace (`A=1 # note` is `1`, `C=#fff` stays
+//! `#fff`). ini, env and cnf values are strings; they still load into
+//! typed fields — see [`Loader::load`].
 //!
 //! # Folder shape: keys and depth
 //!

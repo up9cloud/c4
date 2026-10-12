@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 
 use crate::trace::{SourceRef, Trace, TracedValue, Warning};
-use crate::{Error, Format, FormatKind, Options, Order, Result, Source, Value, de, format};
+use crate::{Error, Format, FormatKind, Options, Order, Result, Source, Value, de, error, format};
 
 /// Loads and merges the config sources named by its [`Options`].
 #[derive(Debug, Clone, Default)]
@@ -27,6 +27,34 @@ impl Loader {
     ///
     /// [`Value`] implements `Deserialize`, so `T = Value` gives dynamic
     /// access and any other serde type gives typed config.
+    ///
+    /// A **string** reaching a `bool`, integer or float field parses with
+    /// the rules of that table type id (`u16`, `bool`, … — see the crate
+    /// docs' table section), so ini, env and cnf values, which are all
+    /// strings, load into typed fields. The explicit `bool` tokens apply
+    /// (`yes`/`no`, `on`/`off`, `1`/`0`, …), and out-of-range or malformed
+    /// text is [`Error::Deserialize`] (`'70000' is not a valid u16`). Untyped
+    /// targets (`Value`, `String`) keep the string.
+    ///
+    /// ```
+    /// #[derive(serde::Deserialize)]
+    /// struct Server {
+    ///     port: u16,
+    ///     debug: bool,
+    /// }
+    ///
+    /// # fn main() -> Result<(), c4::Error> {
+    /// // the 1-tuple value source stands in for an ini/env/cnf file here
+    /// let server: Server = c4::Loader::new(c4::Options {
+    ///     sources: vec![(serde_json::json!({ "port": "8080", "debug": "yes" }),).into()],
+    ///     ..c4::Options::default()
+    /// })
+    /// .load()?;
+    /// assert_eq!(server.port, 8080);
+    /// assert!(server.debug);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// [`Warning`]s are dropped — call [`Loader::trace`] to see why some
     /// input was not used (a skipped cnf `!include`, for instance).
@@ -177,14 +205,14 @@ impl Loader {
                 if format::is_binary(format) {
                     return format::parse_binary(format, path, layout, &self.options);
                 }
-                let text = std::fs::read_to_string(path).map_err(Error::Io)?;
+                let text = std::fs::read_to_string(path).map_err(error::io(path))?;
                 format::parse(format, &text, layout, path, &self.options, warnings)
             }
             Claim::Custom(index) => {
                 let FormatKind::Custom(custom) = &self.options.formats[index].format else {
                     unreachable!("custom claims always index custom entries");
                 };
-                let text = std::fs::read_to_string(path).map_err(Error::Io)?;
+                let text = std::fs::read_to_string(path).map_err(error::io(path))?;
                 // built-in formats filter commented data keys inside
                 // `format::parse`/`parse_binary`; do it for custom ones here
                 let mut value = (custom.parser)(&text, path, &self.options)?;
@@ -240,7 +268,7 @@ impl Loader {
                 {
                     // the trimmed content goes through the table auto
                     // detection (same feature-gated guesses)
-                    let text = std::fs::read_to_string(&file).map_err(Error::Io)?;
+                    let text = std::fs::read_to_string(&file).map_err(error::io(&file))?;
                     format::table_auto(text.trim())
                 }
                 None if self.options.filename_as_key && !self.options.ignore_unknown_ext => {
@@ -338,8 +366,8 @@ fn claimed_format(path: &Path, extensions: &[(String, Claim)]) -> Option<Claim> 
 /// A directory's entries as `(name, path, is_dir)`.
 fn read_entries(dir: &Path) -> Result<Vec<(String, PathBuf, bool)>> {
     let mut entries = Vec::new();
-    for entry in std::fs::read_dir(dir).map_err(Error::Io)? {
-        let entry = entry.map_err(Error::Io)?;
+    for entry in std::fs::read_dir(dir).map_err(error::io(dir))? {
+        let entry = entry.map_err(error::io(dir))?;
         let path = entry.path();
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;

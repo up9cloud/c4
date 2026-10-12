@@ -31,6 +31,23 @@ impl de::Error for DeError {
 
 pub(crate) struct ValueDeserializer(Value);
 
+/// A string reaching a bool/number field (ini, env and cnf values are all
+/// strings) parses with the table type-id rules; anything else, and every
+/// untyped target, goes through `deserialize_any` unchanged.
+macro_rules! coerce {
+    ($($method:ident => $ty:literal),* $(,)?) => {$(
+        fn $method<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, DeError> {
+            match self.0 {
+                Value::String(s) => match crate::format::table::scalar(&s, $ty) {
+                    Some(value) => ValueDeserializer(value).deserialize_any(visitor),
+                    None => Err(de::Error::custom(format!("'{s}' is not a valid {}", $ty))),
+                },
+                other => ValueDeserializer(other).deserialize_any(visitor),
+            }
+        }
+    )*};
+}
+
 impl ValueDeserializer {
     pub(crate) fn new(value: Value) -> Self {
         ValueDeserializer(value)
@@ -109,10 +126,17 @@ impl<'de> Deserializer<'de> for ValueDeserializer {
         }
     }
 
+    coerce! {
+        deserialize_bool => "bool", deserialize_i8 => "i8", deserialize_i16 => "i16",
+        deserialize_i32 => "i32", deserialize_i64 => "i64", deserialize_i128 => "i128",
+        deserialize_u8 => "u8", deserialize_u16 => "u16", deserialize_u32 => "u32",
+        deserialize_u64 => "u64", deserialize_u128 => "u128", deserialize_f32 => "f32",
+        deserialize_f64 => "f64",
+    }
+
     serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
-        bytes byte_buf unit unit_struct seq tuple tuple_struct map struct
-        identifier ignored_any
+        char str string bytes byte_buf unit unit_struct seq tuple tuple_struct
+        map struct identifier ignored_any
     }
 }
 

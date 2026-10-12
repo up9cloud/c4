@@ -24,12 +24,15 @@
   intermediate and `config?.a?.b?.c` didn't exist yet; Rust's `Index`
   gives us the safe form natively.
 
-CLAUDE.md holds the complete, rigorous spec — read it before changing
-behavior. README.md is the user-facing overview; keep it simple.
+The crate docs (`src/lib.rs` and the item docs it links) are the
+behavioral spec; CLAUDE.md records the design decisions and their
+reasons — read both before changing behavior. README.md is the
+user-facing overview; keep it simple.
 
 ## Workflow (TDD, strictly in this order)
 
-1. Spec the behavior in CLAUDE.md (and in simplified form in README.md).
+1. Spec the behavior in the crate docs (a design decision also goes in
+   CLAUDE.md).
 2. Write the tests — fixture folder, integration test, doc tests —
    against the spec.
 3. Implement until the tests pass.

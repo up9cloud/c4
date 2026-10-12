@@ -71,6 +71,87 @@ fn missing_folder_is_error() {
     assert!(matches!(res, Err(c4::Error::NotFound(_))));
 }
 
+#[test]
+fn strings_coerce_into_typed_fields() {
+    // ini/env/cnf values are strings; a typed field parses them the way
+    // the table type ids do (a `(value,)` source keeps this feature-free)
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct Cfg {
+        port: u16,
+        debug: bool,
+        verbose: bool,
+        ratio: f64,
+        big: i128,
+        level: Option<u8>,
+        name: String,
+    }
+    let cfg: Cfg = loader(vec![
+        (serde_json::json!({
+            "port": "8080", "debug": "true", "verbose": "yes", "ratio": "0.5",
+            "big": "170141183460469231731687303715884105727", "level": "3",
+            "name": "8080",
+        }),)
+            .into(),
+    ])
+    .load()
+    .unwrap();
+    assert_eq!(
+        cfg,
+        Cfg {
+            port: 8080,
+            debug: true,
+            verbose: true,
+            ratio: 0.5,
+            big: i128::MAX,
+            level: Some(3),
+            name: "8080".into(),
+        }
+    );
+
+    #[derive(serde::Deserialize, Debug)]
+    #[allow(dead_code)]
+    struct Port {
+        port: u16,
+    }
+    let err = loader(vec![(serde_json::json!({"port": "70000"}),).into()])
+        .load::<Port>()
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("'70000' is not a valid u16"),
+        "{err}"
+    );
+    // an untyped target keeps the string
+    let value: c4::Value = loader(vec![(serde_json::json!({"port": "8080"}),).into()])
+        .load()
+        .unwrap();
+    assert_eq!(value["port"].as_str(), Some("8080"));
+}
+
+#[cfg(all(unix, any(feature = "json", feature = "jsonc")))]
+#[test]
+fn io_errors_name_the_path() {
+    let dir = std::env::temp_dir().join(format!("c4-io-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // a dangling symlink with a claimed extension fails to read
+    let link = dir.join("dead.json");
+    std::os::unix::fs::symlink("/nonexistent/c4", &link).unwrap();
+    let err = loader(vec![dir.clone().into()])
+        .load::<c4::Value>()
+        .unwrap_err();
+    let _ = std::fs::remove_dir_all(&dir);
+    let c4::Error::Io { path, source } = &err else {
+        panic!("expected Error::Io, got {err:?}");
+    };
+    assert_eq!(path, &link);
+    assert_eq!(source.kind(), std::io::ErrorKind::NotFound);
+    assert!(
+        err.to_string().starts_with(&link.display().to_string()),
+        "{err}"
+    );
+    assert!(std::error::Error::source(&err).is_some());
+}
+
 #[cfg(all(any(feature = "json", feature = "jsonc"), feature = "yaml"))]
 #[test]
 fn deserialize_into_struct() {

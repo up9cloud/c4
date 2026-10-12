@@ -1392,7 +1392,7 @@ mod ods {
     }
 }
 
-// Table layouts (spec: CLAUDE.md "Table stage"): kv is the default; db
+// Table layouts (spec: the crate docs): kv is the default; db
 // turns a grid (keys row, type row, records) into an array of record
 // objects; a CustomLayout receives the lowered rows. Layouts are chosen
 // per table source.
@@ -1512,7 +1512,7 @@ mod table_layouts {
 
 // Sheet-targeted table sources: several sources may point at the same
 // workbook, each naming a sheet and a layout; the parsed value merges
-// under the sheet name (spec: CLAUDE.md "Spreadsheet formats").
+// under the sheet name (spec: the crate docs).
 #[cfg(feature = "excel")]
 mod excel_sheet_sources {
     use crate::common::{assert_trace, expect, fx, loader};
@@ -1778,6 +1778,94 @@ fn db_append_columns_push_per_record() {
     assert_eq!(value[0]["a"][1]["c"].as_i64(), Some(2));
     assert_eq!(value[1]["a"][0]["b"].as_i64(), Some(3));
     assert_eq!(value[1]["a"][1]["c"].as_i64(), Some(4));
+}
+
+#[test]
+fn array_index_limits() {
+    // every slot below an index is allocated, so a typo must not cost
+    // gigabytes: one index may skip at most 10000 unset slots, and no
+    // index may exceed 1000000
+    let rows = |keys: &[&str]| -> Vec<Vec<String>> {
+        keys.iter()
+            .map(|k| vec![k.to_string(), "1".to_string()])
+            .collect()
+    };
+    let options = base();
+    let path = std::path::Path::new("doc");
+    let kv = |keys: &[&str]| c4::parse_table(rows(keys), &c4::TableLayout::Kv, path, &options);
+
+    // each jump skips at most 10000 unset slots, however far it reaches
+    let value = kv(&["a[1]", "a[100]", "a[10002]"]).unwrap();
+    assert_eq!(value["a"].as_array().unwrap().len(), 10_003);
+    let value = kv(&["a[10000]"]).unwrap();
+    assert_eq!(value["a"].as_array().unwrap().len(), 10_001);
+
+    // after a[1] the array holds 2 slots: a[10002] skips exactly 10000
+    assert!(kv(&["a[1]", "a[10002]"]).is_ok());
+    let err = kv(&["a[1]", "a[10003]"]).unwrap_err();
+    assert!(matches!(err, c4::Error::Table { row: 2, .. }), "{err:?}");
+    assert!(
+        err.to_string()
+            .contains("array index 10003 in 'a[10003]' skips 10001 unset slots (limit 10000)"),
+        "{err}"
+    );
+    let err = kv(&["a[10001]"]).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("array index 10001 in 'a[10001]' skips 10001 unset slots (limit 10000)"),
+        "{err}"
+    );
+    let err = kv(&["a[1000001]"]).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("array index 1000001 in 'a[1000001]' is above the limit (1000000)"),
+        "{err}"
+    );
+
+    // db columns report the record's row
+    let grid = vec![
+        vec!["a[10001]".to_string()],
+        vec![String::new()],
+        vec!["1".to_string()],
+    ];
+    let err = c4::parse_table(grid, &c4::TableLayout::Db, path, &options).unwrap_err();
+    assert!(matches!(err, c4::Error::Table { row: 3, .. }), "{err:?}");
+}
+
+#[cfg(feature = "env")]
+#[test]
+fn env_array_index_limit_reports_the_line() {
+    let err = common::loader(vec![("env", "A=1\nB[10001]=2\n").into()])
+        .load::<c4::Value>()
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("line 2: array index 10001"),
+        "{err}"
+    );
+}
+
+#[cfg(feature = "env")]
+#[test]
+fn env_inline_comments() {
+    // dotenv rules: in an unquoted value `#` starts a comment only after
+    // whitespace; a quoted value ends at its closing quote
+    let value: c4::Value = common::loader(vec![
+        (
+            "env",
+            "A=1 # web\nB=\"x # y\" # note\nC=#fff\nD= #c\nE='a'#c\nF=a#b\nG=\"open # x\n",
+        )
+            .into(),
+    ])
+    .load()
+    .unwrap();
+    assert_eq!(value["A"].as_str(), Some("1"));
+    assert_eq!(value["B"].as_str(), Some("x # y"));
+    assert_eq!(value["C"].as_str(), Some("#fff"));
+    assert_eq!(value["D"].as_str(), Some(""));
+    assert_eq!(value["E"].as_str(), Some("a"));
+    assert_eq!(value["F"].as_str(), Some("a#b"));
+    // an unclosed quote is unquoted text, so the comment rule applies
+    assert_eq!(value["G"].as_str(), Some("\"open"));
 }
 
 #[cfg(feature = "env")]

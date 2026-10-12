@@ -1,5 +1,5 @@
-//! CLI behavior, spec: CLAUDE.md "CLI". Compiled only with the cli
-//! feature.
+//! CLI behavior, spec: `USAGE` in src/main.rs and CLAUDE.md. Compiled
+//! only with the cli feature.
 //!
 //! Stdout comparisons are fixture-driven: every folder under
 //! `tests/cli/<case>/` holds `args.txt` (the command line,
